@@ -10,14 +10,29 @@ compatibility: Pi coding agent with Node.js; some extensions additionally requir
 
 Treat this repository as a personal Pi package, not as a conventional application. It bundles independent resources that Pi loads from the paths declared under `package.json#pi`.
 
+## Repository Identity and Write Target
+
+This skill may be loaded from Pi's managed Git package clone at `~/.pi/agent/git/github.com/v2naix/pi-extras`. That directory is a disposable runtime installation, not the development checkout. Pi may reset and clean it during package reconciliation.
+
+For every request that adds, imports, changes, removes, tests, documents, commits, or publishes a pi-extras resource:
+
+1. Use `$PI_EXTRAS_REPO` when it is set; otherwise use `~/.pi/pi-extras` as the canonical development checkout.
+2. Resolve the target with `git -C <target> rev-parse --show-toplevel` and verify that `remote.origin.url` identifies `v2naix/pi-extras` before writing.
+3. Never write, copy files, commit, or push from any path under `~/.pi/agent/git/` or `~/.pi/agent/npm/`, even when this `SKILL.md` was loaded from there.
+4. If the canonical checkout is missing, has the wrong remote, or contains unrelated changes that make the requested edit unsafe, stop and explain the problem. Do not fall back to the managed clone.
+5. Resolve repository-relative paths such as `package.json`, `README.md`, `extensions/`, and `skills/` against the verified canonical checkout, not against this skill's installed location.
+
+In this personal collection, a request to “收录”, import, or add a resource means to make it durable in the canonical repository: review its source and license, add it there, update the relevant inventory/documentation, validate it, commit the requested changes, and push the current branch to `origin` unless the user explicitly asks for a local-only change. Do not manually synchronize the managed clone; use Pi's package update flow and `/reload` or a restart when the installed copy also needs refreshing.
+
 ## Start Here
 
 Before changing anything:
 
-1. Read `package.json` and `README.md`.
-2. Read the complete target file under `extensions/`.
-3. Check nearby resources for repository conventions, but do not couple otherwise independent extensions.
-4. For Pi API questions, read the installed Pi documentation rather than guessing:
+1. Locate and verify the canonical development checkout as described above.
+2. Read its `package.json` and `README.md`.
+3. Read the complete target resource under `extensions/`, `skills/`, or the relevant resource directory.
+4. Check nearby resources for repository conventions, but do not couple otherwise independent resources.
+5. For Pi API questions, read the installed Pi documentation rather than guessing:
    - `docs/extensions.md` for extensions, commands, tools, events, and UI
    - `docs/skills.md` for skills
    - `docs/packages.md` for package manifests and installation
@@ -53,7 +68,8 @@ Before changing anything:
 3. Preserve existing command and tool names unless the user explicitly requests a breaking change.
 4. Update the inventory in this skill and `README.md` when user-visible behavior, setup, or prerequisites change.
 5. If adding a resource type or a non-conventional path, update `package.json#pi`. A manifest entry must point at the actual package-relative directory.
-6. Review `git diff` and report platform assumptions and untested interactive behavior.
+6. Review `git status` and `git diff` in the canonical checkout and report platform assumptions and untested interactive behavior.
+7. For a “收录”, import, or add request, commit only the intended files and push to `origin` after validation. For ordinary debugging or local edits, do not commit or push unless requested.
 
 ## Extension Conventions
 
@@ -87,4 +103,4 @@ pi -e ./extensions/<name>.ts
 
 This is an interactive smoke test, not an automated test suite. Exercise the affected command/tool, including cancellation, missing dependencies, empty results, and non-zero subprocess exits. After changing resources in an active local installation, use `/reload` or restart Pi. Validate skill frontmatter (`name`, `description`) and confirm `/skill:pi-extras` appears when skill commands are enabled.
 
-Do not invoke network-dependent behavior merely to test it unless the user asks. Do not publish, install globally, or modify external catalog/settings state without explicit user intent.
+Do not invoke network-dependent behavior merely to test it unless the user asks. A “收录”, import, add-and-publish, or explicit push request supplies intent to commit and push this repository; otherwise do not publish, install globally, or modify external catalog/settings state without explicit user intent.
