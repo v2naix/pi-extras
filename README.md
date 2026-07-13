@@ -6,7 +6,7 @@
 
 ```text
 extensions/   Pi extensions
-skills/       供 Pi 按需加载的仓库使用与维护指南
+skills/       Pi 按需加载的技能与配套脚本
 ```
 
 后续也可以按需增加：
@@ -30,7 +30,18 @@ pi install ~/.pi/pi-extras
 /skill:pi-extras
 ```
 
-该 skill 会告诉 Pi 如何选择现有功能、维护扩展、处理平台依赖，以及验证改动。
+仓库当前提供以下 skills：
+
+- `pi-extras`：选择、使用和维护本仓库资源的指南；
+- `dayone-reader`：使用捆绑的只读优先 CLI，在本机检索 Day One 日记。支持日记本、标签、最近条目、搜索、历年今日、单篇读取和显式新建。
+
+Day One skill 仅支持 macOS，需要 Python 3.11+ 和已安装的 Day One。读取直接访问本机数据库，不联网、不创建全文索引；新建功能仅调用官方 `dayone` CLI。
+
+启用 skill commands 后可以显式调用：
+
+```text
+/skill:dayone-reader
+```
 
 ## Package Catalog 集成
 
