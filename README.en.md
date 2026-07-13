@@ -50,7 +50,6 @@ The reader accesses the local Day One database directly. It does not use the net
 | [`diff.ts`](extensions/diff.ts) | `/diff`, `/diff list`, `/diff clear` | Tracks files touched by the last agent run, lists them, or opens a selected file in Zed. | Git; opening files requires the `zed` CLI. |
 | [`package-catalog.ts`](extensions/package-catalog.ts) | `pi_package_catalog` tool | Lets the agent inspect, add, remove, apply, or capture shared Pi package catalog configuration while serializing mutations. | A separate `pi-package-catalog` checkout. |
 | [`retro.ts`](extensions/retro.ts) | `/retro` | Analyzes detours and possible repository improvements from the latest session and writes an HTML retrospective beside the session file. | Report generation calls a model; the HTML loads Tailwind CSS from a CDN. |
-| [`usage.ts`](extensions/usage.ts) | `/usage` | Summarizes Pi and Codex CLI messages, tokens, and estimated current cost over the last 1, 7, 30, and 90 days. | Reads local session JSONL; current models.dev pricing lookup requires network access. |
 | [`youtube-transcript.ts`](extensions/youtube-transcript.ts) | `youtube_transcript` tool | Downloads and cleans existing YouTube subtitles, prefers creator-provided tracks, and caches complete long transcripts locally. | `yt-dlp` and network access; analyzes subtitles only, not visuals or audio without subtitles. |
 
 ### Package Catalog setup
@@ -69,18 +68,6 @@ Set `PI_PACKAGE_CATALOG_DIR` if the catalog is installed elsewhere. The tool sup
 - `capture`: save machine-local choices after the user has run `pi config` directly and changed resource selections.
 
 The user should run the interactive `pi config` flow directly in a terminal; the tool intentionally does not start a nested Pi TUI.
-
-### Usage data and pricing
-
-`/usage` reads only the following local session directories and does not modify session files:
-
-```text
-~/.pi/agent/sessions
-~/.codex/sessions
-~/.codex/archived_sessions  # optional
-```
-
-Current model prices come from [models.dev](https://models.dev), so pricing lookup requires network access. This extension is adapted from [`davis7dotsh/my-pi-setup`](https://github.com/davis7dotsh/my-pi-setup/blob/322d60288226d7edbefff03662f879f02147227d/extensions/usage.ts); the original MIT copyright and license notice remains in the source file.
 
 ## Repository structure
 
