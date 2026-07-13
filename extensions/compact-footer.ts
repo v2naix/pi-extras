@@ -36,10 +36,11 @@ export default function (pi: ExtensionAPI) {
           const sessionName = ctx.sessionManager.getSessionName();
           if (sessionName) location += ` • ${sessionName}`;
 
-          const statuses = [...footerData.getExtensionStatuses().entries()]
+          const statusText = [...footerData.getExtensionStatuses().entries()]
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([, text]) => sanitize(text));
-          if (statuses.length > 0) location += ` • ${statuses.join(" ")}`;
+            .map(([, text]) => sanitize(text))
+            .filter(Boolean)
+            .join(" ");
           location = ` ${location}`;
 
           const usage = ctx.getContextUsage();
@@ -64,18 +65,25 @@ export default function (pi: ExtensionAPI) {
           }
           modelText = ` ${modelText}`;
 
-          // Keep context usage first and visible; location and model yield space on narrow terminals.
+          // Keep context usage and extension statuses visible; location and model yield
+          // space on narrow terminals. Statuses render last, on the right, without
+          // imposing their own highlight style.
           const separator = "   ";
+          const separatorWidth = visibleWidth(separator);
           const contextWidth = visibleWidth(context);
           if (width <= contextWidth) return [truncateToWidth(context, width, "")];
 
-          const flexibleWidth = Math.max(0, width - contextWidth - visibleWidth(separator) * 2);
-          const cappedModelWidth = Math.min(visibleWidth(modelText), Math.ceil(flexibleWidth * 0.6));
-          const locationWidth = Math.min(visibleWidth(location), flexibleWidth - cappedModelWidth);
-          const modelWidth = Math.min(visibleWidth(modelText), flexibleWidth - locationWidth);
+          const optionalSegments = statusText ? 3 : 2;
+          const flexibleWidth = Math.max(0, width - contextWidth - separatorWidth * optionalSegments);
+          const statusWidth = Math.min(visibleWidth(statusText), flexibleWidth);
+          const contentWidth = Math.max(0, flexibleWidth - statusWidth);
+          const cappedModelWidth = Math.min(visibleWidth(modelText), Math.ceil(contentWidth * 0.6));
+          const locationWidth = Math.min(visibleWidth(location), contentWidth - cappedModelWidth);
+          const modelWidth = Math.min(visibleWidth(modelText), contentWidth - locationWidth);
           const left = truncateToWidth(theme.fg("dim", location), locationWidth, theme.fg("dim", "…"));
           const right = truncateToWidth(theme.fg("dim", modelText), modelWidth, "");
-          const segments = [context, left, right].filter((part) => visibleWidth(part) > 0);
+          const status = truncateToWidth(statusText, statusWidth, "");
+          const segments = [context, left, right, status].filter((part) => visibleWidth(part) > 0);
 
           return [truncateToWidth(segments.join(separator), width, "")];
         },

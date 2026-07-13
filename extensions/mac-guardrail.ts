@@ -237,7 +237,7 @@ async function enforce(
 export default function macGuardrail(pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.hasUI) {
-			ctx.ui.setStatus("mac-guardrail", ctx.ui.theme.fg("success", "● mac guard"));
+			ctx.ui.setStatus("mac-guardrail", "mac-guard");
 		}
 	});
 
