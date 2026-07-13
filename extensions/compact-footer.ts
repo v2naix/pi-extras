@@ -66,8 +66,8 @@ export default function (pi: ExtensionAPI) {
           modelText = ` ${modelText}`;
 
           // Keep context usage and extension statuses visible; location and model yield
-          // space on narrow terminals. Statuses render last, on the right, without
-          // imposing their own highlight style.
+          // space on narrow terminals. Statuses render last, on the right, using
+          // the current theme's dim color instead of a fixed highlight.
           const separator = "   ";
           const separatorWidth = visibleWidth(separator);
           const contextWidth = visibleWidth(context);
@@ -82,7 +82,7 @@ export default function (pi: ExtensionAPI) {
           const modelWidth = Math.min(visibleWidth(modelText), contentWidth - locationWidth);
           const left = truncateToWidth(theme.fg("dim", location), locationWidth, theme.fg("dim", "…"));
           const right = truncateToWidth(theme.fg("dim", modelText), modelWidth, "");
-          const status = truncateToWidth(statusText, statusWidth, "");
+          const status = truncateToWidth(theme.fg("dim", statusText), statusWidth, "");
           const segments = [context, left, right, status].filter((part) => visibleWidth(part) > 0);
 
           return [truncateToWidth(segments.join(separator), width, "")];
