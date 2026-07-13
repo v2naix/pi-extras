@@ -1,95 +1,91 @@
 ---
 name: pi-extras
-description: Understands, uses, and maintains this pi-extras Pi package, including its bundled extensions, slash commands, custom tools, package manifest, installation flow, dependencies, and safety constraints. Use when explaining this repository, choosing one of its Pi features, or adding, changing, debugging, testing, or documenting resources in pi-extras.
-disable-model-invocation: true
+description: Curates reusable Pi skills and extensions in the canonical v2naix/pi-extras repository. Use when an agent has created or obtained a Pi resource that should be collected there, or when adding, importing, modifying, replacing, or removing a skill or extension from that collection.
 license: MIT
-compatibility: Pi coding agent with Node.js; some extensions additionally require macOS, Zed, yt-dlp, network access, local Codex CLI sessions, or the external pi-package-catalog repository.
+compatibility: Pi coding agent with Git and a writable canonical checkout of v2naix/pi-extras.
 ---
 
-# pi-extras
+# Maintain pi-extras
 
-Treat this repository as a personal Pi package, not as a conventional application. It bundles independent resources that Pi loads from the paths declared under `package.json#pi`.
+Use this skill to maintain the `pi-extras` collection. Its job is repository curation: place reusable Pi resources in the correct development repository, keep them maintainable, and remove them cleanly when no longer wanted.
 
-## Repository Identity and Write Target
+Do not use this skill as an inventory of the collection. Discover current resources from the verified checkout, `package.json`, and the filesystem; do not add a list of bundled resources to this file.
 
-This skill may be loaded from Pi's managed Git package clone at `~/.pi/agent/git/github.com/v2naix/pi-extras`. That directory is a disposable runtime installation, not the development checkout. Pi may reset and clean it during package reconciliation.
+## Find the Correct Repository
 
-For every request that adds, imports, changes, removes, tests, documents, commits, or publishes a pi-extras resource:
+This skill may be loaded from a managed Pi package clone. Managed clones are runtime installations and may be reset or cleaned by Pi, so they are never valid write targets.
 
-1. Use `$PI_EXTRAS_REPO` when it is set; otherwise use `~/.pi/pi-extras` as the canonical development checkout.
-2. Resolve the target with `git -C <target> rev-parse --show-toplevel` and verify that `remote.origin.url` identifies `v2naix/pi-extras` before writing.
-3. Never write, copy files, commit, or push from any path under `~/.pi/agent/git/` or `~/.pi/agent/npm/`, even when this `SKILL.md` was loaded from there.
-4. If the canonical checkout is missing, has the wrong remote, or contains unrelated changes that make the requested edit unsafe, stop and explain the problem. Do not fall back to the managed clone.
-5. Resolve repository-relative paths such as `package.json`, `README.md`, `extensions/`, and `skills/` against the verified canonical checkout, not against this skill's installed location.
+1. Use `$PI_EXTRAS_REPO` when set; otherwise use `~/.pi/pi-extras`.
+2. Resolve it with `git -C <target> rev-parse --show-toplevel`.
+3. Verify that `git -C <target> remote get-url origin` identifies `v2naix/pi-extras`.
+4. Perform all reads, writes, tests, Git operations, and repository-relative path resolution from that verified root.
+5. Never modify a copy under `~/.pi/agent/git/` or `~/.pi/agent/npm/`.
+6. If the canonical checkout is missing, points to another repository, or has unrelated changes that make the operation unsafe, stop and explain instead of falling back to an installed copy.
 
-In this personal collection, a request to “收录”, import, or add a resource means to make it durable in the canonical repository: review its source and license, add it there, update the relevant inventory/documentation, validate it, commit the requested changes, and push the current branch to `origin` unless the user explicitly asks for a local-only change. Do not manually synchronize the managed clone; use Pi's package update flow and `/reload` or a restart when the installed copy also needs refreshing.
+Before collecting a resource here, confirm that this is its correct home:
 
-## Start Here
+- Put reusable personal Pi resources in `pi-extras`.
+- Keep project-specific resources in that project's repository.
+- Keep an independently maintained application or library in its own source repository; include only the Pi-facing integration here when appropriate.
+- Do not edit installed package clones or external package-catalog/settings state as a substitute for changing the source repository.
 
-Before changing anything:
+## Inspect Before Changing
 
-1. Locate and verify the canonical development checkout as described above.
-2. Read its `package.json` and `README.md`.
-3. Read the complete target resource under `extensions/`, `skills/`, or the relevant resource directory.
-4. Check nearby resources for repository conventions, but do not couple otherwise independent resources.
-5. For Pi API questions, read the installed Pi documentation rather than guessing:
-   - `docs/extensions.md` for extensions, commands, tools, events, and UI
-   - `docs/skills.md` for skills
-   - `docs/packages.md` for package manifests and installation
-   Resolve these below the installed `@earendil-works/pi-coding-agent` package.
+1. Read `AGENTS.md`, `package.json`, and the relevant repository documentation.
+2. Read the complete resource and its scripts, references, assets, tests, and neighboring files that establish conventions.
+3. For a generated or third-party resource, inspect the source before running it. Check provenance, license, dependencies, subprocesses, network access, credential handling, filesystem writes, and platform assumptions.
+4. Read the installed Pi documentation for the affected resource type rather than guessing about APIs or layout:
+   - `docs/skills.md`
+   - `docs/extensions.md`
+   - `docs/packages.md`
+   - other linked Pi documentation when the implementation uses those APIs
+5. Check for collisions with existing skill names, slash commands, custom tools, shortcuts, files, and dependencies.
 
-## Resource Inventory
+## Add or Import
 
-| Resource | Pi-facing behavior | Runtime constraints |
-| --- | --- | --- |
-| `extensions/compact-footer.ts` | Replaces the TUI footer with cwd/git/session/status, context usage, and model details | TUI only; uses Nerd Font glyphs |
-| `extensions/copy-all.ts` | `/copy-all` copies user and assistant messages from the active branch | macOS `pbcopy` |
-| `extensions/diff.ts` | Tracks files touched by the last agent run; `/diff`, `/diff list`, `/diff clear` inspect/open them | Git for status; Zed CLI `zed` for opening |
-| `extensions/package-catalog.ts` | Registers the model-callable `pi_package_catalog` tool | External `~/.pi/pi-package-catalog` or `PI_PACKAGE_CATALOG_DIR` |
-| `extensions/retro.ts` | `/retro` asks the agent to create an HTML retrospective beside the latest session file | Preferred model may be unavailable; generated HTML loads Tailwind from CDN |
-| `extensions/usage.ts` | `/usage` asks the agent to summarize Pi and Codex CLI token usage and estimated cost over 1, 7, 30, and 90 days | Reads local session JSONL; current pricing lookup requires models.dev network access |
-| `extensions/youtube-transcript.ts` | Registers `youtube_transcript` to download and clean existing YouTube subtitles | `yt-dlp`; subtitles only, no visual analysis |
-| `skills/pi-extras/SKILL.md` | Gives Pi this repository-specific operating guide | Loaded through the package manifest |
-| `skills/dayone-new/SKILL.md` | Creates local Day One entries through the official `dayone` CLI | macOS, Day One, official CLI; creation is non-idempotent |
-| `skills/dayone-reader/SKILL.md` | Searches and reads local Day One journals through the independently installed `v2naix/dayone-reader` CLI | macOS, Day One, Python 3.11+, installed reader CLI |
+When the user asks to “收录”, add, or import a resource:
 
-## Choose and Use the Existing Feature
+1. Bring the complete maintainable source into the canonical checkout; do not leave it dependent on temporary agent output or an installed clone.
+2. Put skills under `skills/<name>/SKILL.md`, with helper scripts, references, and assets inside that skill directory. Put small extensions under `extensions/<name>.ts`; use a directory and entry point only when multiple files make that clearer.
+3. Preserve required copyright, license, and attribution notices. Record the source and pinned revision in the resource or repository documentation when code came from elsewhere.
+4. Adapt hard-coded paths and assumptions for packaged use. Skill-relative files must resolve from the skill directory; package paths must be relative to the repository root.
+5. Include only source and required assets. Exclude secrets, local state, caches, sessions, downloaded artifacts, and generated dependency directories.
+6. Add true third-party runtime modules to `dependencies`. Pi core packages belong in `peerDependencies` with `"*"` when they need to be declared, not in ordinary runtime dependencies.
+7. Update `package.json#pi` only when the current manifest does not already discover the resource. Update user-facing documentation for setup, provenance, compatibility, or behavior, keep `README.md` and `README.en.md` synchronized, but do not add an inventory to this skill.
 
-- For catalog `status`, `add`, `remove`, `apply`, or eligible `capture` requests, use `pi_package_catalog`; do not directly edit catalog state files.
-- Use catalog `capture` only after the user has directly changed resource selections with `pi config`.
-- For a YouTube summary, use `youtube_transcript` first when available, summarize its returned text, and disclose that visual-only content was not analyzed.
-- `/usage` is an interactive slash command that delegates local session parsing and models.dev pricing lookup to the agent; it is not a model-callable reporting tool.
-- Use `dayone-new` only for explicit entry-creation requests and `dayone-reader` for journal lookup; never retry an uncertain creation automatically.
-- Slash commands are interactive user features. Explain the exact command rather than pretending it is a model-callable tool.
-- Do not claim optional integrations are portable: `copy-all` is macOS-specific and `diff` opens Zed.
+Treat “收录” as a request to make the resource durable in this repository. After validation, commit only the intended files and push the current branch to `origin` unless the user asks for a local-only change. Do not manually synchronize Pi's managed clone; use Pi's package update flow and reload or restart Pi when the installed copy must be refreshed.
 
-## Modification Workflow
+## Modify or Replace
 
-1. Identify whether the request needs an extension, skill, prompt, theme, or documentation change.
-2. Keep a small feature as one standalone file. Introduce a directory only when helpers or state make that clearer.
-3. Preserve existing command and tool names unless the user explicitly requests a breaking change.
-4. Update the inventory in this skill and `README.md` when user-visible behavior, setup, or prerequisites change.
-5. If adding a resource type or a non-conventional path, update `package.json#pi`. A manifest entry must point at the actual package-relative directory.
-6. Review `git status` and `git diff` in the canonical checkout and report platform assumptions and untested interactive behavior.
-7. For a “收录”, import, or add request, commit only the intended files and push to `origin` after validation. For ordinary debugging or local edits, do not commit or push unless requested.
+- Change the canonical source, not the installed copy.
+- Preserve existing skill, command, and tool names unless the user requests a breaking change.
+- Keep independent resources independent; do not introduce shared infrastructure without a concrete need.
+- Update bundled scripts, references, tests, dependencies, manifest entries, and documentation together when the change affects them.
+- Re-review safety boundaries when expanding capabilities, especially for shell execution, network access, credentials, destructive actions, or non-idempotent operations.
+- Do not commit or push an ordinary modification unless the user requests publication.
 
-## Extension Conventions
+## Remove
 
-- For new code, import Pi APIs from `@earendil-works/pi-coding-agent`; use `@earendil-works/pi-ai`, `@earendil-works/pi-tui`, and `typebox` where appropriate.
-- Export a default extension factory receiving `ExtensionAPI`.
-- Use `StringEnum` for string-enum tool parameters and TypeBox for schemas.
-- Throw from tool `execute` to signal failure. Return concise model-facing `content` plus structured `details` when useful.
-- Pass abort signals and finite timeouts to external work. Give actionable missing-command errors.
-- Truncate potentially large tool output with Pi's truncation helpers and state where full output was saved.
-- Assume sibling tool calls can execute concurrently. Serialize shared read-modify-write state; use Pi's file mutation queue when a custom tool mutates files.
-- Start long-lived resources at `session_start` or on demand, and release them at `session_shutdown`.
-- Guard terminal rendering with `ctx.mode === "tui"`; guard dialogs/notifications with `ctx.hasUI` when non-interactive modes matter.
-- Treat extensions and skill instructions as full-user-permission code. Validate untrusted URLs, paths, and subprocess arguments.
-- Do not add bundled Pi core packages as ordinary runtime dependencies. If the package needs to declare them, use `peerDependencies` with `"*"`; put true third-party runtime modules in `dependencies`.
+When removing a skill or extension:
 
-## Verification
+1. Confirm the exact resource and whether any files or dependencies are shared.
+2. Search the repository for its paths, names, commands, tools, documentation, manifest entries, tests, and dependencies.
+3. Delete the resource's owned files and remove only references and dependencies that are now unused.
+4. Keep unrelated resources and external user data untouched. Removing source from this repository does not authorize editing Pi settings, package-catalog state, managed clones, or application data.
+5. Validate that package discovery and the remaining resources still work.
 
-Run checks appropriate to the change:
+A request to remove a resource from the collection authorizes the repository deletion, but not a commit or push unless the user explicitly asks for it.
+
+## Validate and Review
+
+Choose checks that match the affected resource:
+
+- Skills: validate frontmatter, names, descriptions, relative paths, required files, and safe command examples.
+- Extensions: check imports, schemas, cancellation, subprocess failures, output truncation, runtime dependencies, and non-TUI behavior where relevant.
+- Package changes: verify that every manifest path exists and that JSON parses.
+- Imported code: ensure retained attribution and license terms are compatible with redistribution.
+
+At minimum run from the canonical root:
 
 ```bash
 node -e 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")); console.log("package.json ok")'
@@ -97,12 +93,11 @@ git diff --check
 git status --short
 ```
 
-For an extension, quick-test only that file when practical:
+Use an isolated smoke test for each changed resource when practical:
 
 ```bash
-pi -e ./extensions/<name>.ts
+pi --no-skills --skill ./skills/<skill-name>
+pi --no-extensions -e ./extensions/<extension-file>.ts
 ```
 
-This is an interactive smoke test, not an automated test suite. Exercise the affected command/tool, including cancellation, missing dependencies, empty results, and non-zero subprocess exits. After changing resources in an active local installation, use `/reload` or restart Pi. Validate skill frontmatter (`name`, `description`) and confirm `/skill:pi-extras` appears when skill commands are enabled.
-
-Do not invoke network-dependent behavior merely to test it unless the user asks. A “收录”, import, add-and-publish, or explicit push request supplies intent to commit and push this repository; otherwise do not publish, install globally, or modify external catalog/settings state without explicit user intent.
+Do not invoke network-dependent, destructive, or non-idempotent behavior merely for testing. Finish by reviewing `git diff` and reporting what changed, what was tested, and any remaining platform or interactive assumptions.
