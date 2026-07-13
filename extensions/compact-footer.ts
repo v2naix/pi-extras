@@ -1,5 +1,4 @@
-import { homedir } from "node:os";
-import { relative, resolve, sep } from "node:path";
+import { basename, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
@@ -11,12 +10,8 @@ function formatTokens(count: number): string {
 }
 
 function formatCwd(cwd: string): string {
-  const home = resolve(homedir());
   const current = resolve(cwd);
-  const rel = relative(home, current);
-  const insideHome = rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`));
-  if (!insideHome) return cwd;
-  return rel === "" ? "~" : `~${sep}${rel}`;
+  return basename(current) || current;
 }
 
 function sanitize(text: string): string {
