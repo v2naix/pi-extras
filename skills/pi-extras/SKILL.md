@@ -3,7 +3,7 @@ name: pi-extras
 description: Understands, uses, and maintains this pi-extras Pi package, including its bundled extensions, slash commands, custom tools, package manifest, installation flow, dependencies, and safety constraints. Use when explaining this repository, choosing one of its Pi features, or adding, changing, debugging, testing, or documenting resources in pi-extras.
 disable-model-invocation: true
 license: MIT
-compatibility: Pi coding agent with Node.js; some extensions additionally require macOS, Zed, yt-dlp, or the external pi-package-catalog repository.
+compatibility: Pi coding agent with Node.js; some extensions additionally require macOS, Zed, yt-dlp, network access, local Codex CLI sessions, or the external pi-package-catalog repository.
 ---
 
 # pi-extras
@@ -47,6 +47,7 @@ Before changing anything:
 | `extensions/diff.ts` | Tracks files touched by the last agent run; `/diff`, `/diff list`, `/diff clear` inspect/open them | Git for status; Zed CLI `zed` for opening |
 | `extensions/package-catalog.ts` | Registers the model-callable `pi_package_catalog` tool | External `~/.pi/pi-package-catalog` or `PI_PACKAGE_CATALOG_DIR` |
 | `extensions/retro.ts` | `/retro` asks the agent to create an HTML retrospective beside the latest session file | Preferred model may be unavailable; generated HTML loads Tailwind from CDN |
+| `extensions/usage.ts` | `/usage` asks the agent to summarize Pi and Codex CLI token usage and estimated cost over 1, 7, 30, and 90 days | Reads local session JSONL; current pricing lookup requires models.dev network access |
 | `extensions/youtube-transcript.ts` | Registers `youtube_transcript` to download and clean existing YouTube subtitles | `yt-dlp`; subtitles only, no visual analysis |
 | `skills/pi-extras/SKILL.md` | Gives Pi this repository-specific operating guide | Loaded through the package manifest |
 | `skills/dayone-new/SKILL.md` | Creates local Day One entries through the official `dayone` CLI | macOS, Day One, official CLI; creation is non-idempotent |
@@ -57,6 +58,7 @@ Before changing anything:
 - For catalog `status`, `add`, `remove`, `apply`, or eligible `capture` requests, use `pi_package_catalog`; do not directly edit catalog state files.
 - Use catalog `capture` only after the user has directly changed resource selections with `pi config`.
 - For a YouTube summary, use `youtube_transcript` first when available, summarize its returned text, and disclose that visual-only content was not analyzed.
+- `/usage` is an interactive slash command that delegates local session parsing and models.dev pricing lookup to the agent; it is not a model-callable reporting tool.
 - Use `dayone-new` only for explicit entry-creation requests and `dayone-reader` for journal lookup; never retry an uncertain creation automatically.
 - Slash commands are interactive user features. Explain the exact command rather than pretending it is a model-callable tool.
 - Do not claim optional integrations are portable: `copy-all` is macOS-specific and `diff` opens Zed.

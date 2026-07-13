@@ -51,6 +51,18 @@ Reader skill 中只保留固定路径启动包装器，CLI 实现、测试和发
 /skill:dayone-reader
 ```
 
+## Usage 报告
+
+`extensions/usage.ts` 注册 `/usage` 命令。执行后，Agent 会读取本机 Pi 与 Codex CLI 的 JSONL 会话，按模型汇总最近 1、7、30、90 天的消息/轮次、输入/输出/缓存 Token 和总 Token，并查询 [models.dev](https://models.dev) 的当前价格估算费用。
+
+该命令会读取 `~/.pi/agent/sessions`、`~/.codex/sessions` 和可选的 `~/.codex/archived_sessions`；价格查询需要联网。扩展本身只向 Agent 发送报告提示词，不直接修改会话文件。
+
+此扩展改编自 [`davis7dotsh/my-pi-setup`](https://github.com/davis7dotsh/my-pi-setup/blob/322d60288226d7edbefff03662f879f02147227d/extensions/usage.ts)，原始文件采用 MIT License；版权与许可声明保留在文件头中。
+
+```text
+/usage
+```
+
 ## Package Catalog 集成
 
 `extensions/package-catalog.ts` 注册 `pi_package_catalog` 工具，让 Pi 可以直接执行：
