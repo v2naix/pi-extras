@@ -6,12 +6,12 @@
 
 ```text
 extensions/   Pi extensions
+skills/       供 Pi 按需加载的仓库使用与维护指南
 ```
 
 后续也可以按需增加：
 
 ```text
-skills/
 prompts/
 themes/
 ```
@@ -23,6 +23,14 @@ pi install ~/.pi/pi-extras
 ```
 
 也可以将仓库发布到 Git 后，把 Git 来源加入 `pi-package-catalog` 统一管理。
+
+安装后，Pi 会在任务匹配时按需加载 `pi-extras` skill。启用 skill commands 后也可显式调用：
+
+```text
+/skill:pi-extras
+```
+
+该 skill 会告诉 Pi 如何选择现有功能、维护扩展、处理平台依赖，以及验证改动。
 
 ## Package Catalog 集成
 
