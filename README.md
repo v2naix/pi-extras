@@ -33,9 +33,15 @@ pi install ~/.pi/pi-extras
 仓库当前提供以下 skills：
 
 - `pi-extras`：选择、使用和维护本仓库资源的指南；
-- `dayone-reader`：使用捆绑的只读优先 CLI，在本机检索 Day One 日记。支持日记本、标签、最近条目、搜索、历年今日、单篇读取和显式新建。
+- `dayone-reader`：通过独立安装的 [`v2naix/dayone-reader`](https://github.com/v2naix/dayone-reader) CLI，在本机检索 Day One 日记。支持日记本、标签、最近条目、搜索、历年今日、单篇读取和显式新建。
 
-Day One skill 仅支持 macOS，需要 Python 3.11+ 和已安装的 Day One。读取直接访问本机数据库，不联网、不创建全文索引；新建功能仅调用官方 `dayone` CLI。
+Day One skill 仅支持 macOS，需要 Python 3.11+、已安装的 Day One，以及位于 `~/.local/bin/dayone-reader` 的独立 CLI。也可以用 `DAYONE_READER_CLI` 配置绝对路径：
+
+```bash
+uv tool install git+https://github.com/v2naix/dayone-reader
+```
+
+Skill 中只保留固定路径启动包装器，CLI 实现、测试和发布由独立仓库维护。读取直接访问本机数据库，不联网、不创建全文索引；新建功能仅调用官方 `dayone` CLI。
 
 启用 skill commands 后可以显式调用：
 

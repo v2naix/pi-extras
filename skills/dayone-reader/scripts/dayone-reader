@@ -1,4 +1,11 @@
 #!/bin/sh
 set -eu
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m dayone_reader.cli "$@"
+
+CLI=${DAYONE_READER_CLI:-"$HOME/.local/bin/dayone-reader"}
+
+if [ ! -x "$CLI" ]; then
+  echo "dayone-reader is not installed at $CLI. Install v2naix/dayone-reader or set DAYONE_READER_CLI to its absolute executable path." >&2
+  exit 127
+fi
+
+exec "$CLI" "$@"

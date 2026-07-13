@@ -1,15 +1,21 @@
 ---
 name: dayone-reader
-description: Safely search and read the user's local Day One journals with the bundled dayone-reader CLI. Use for Day One journal lookup, recent entries, on-this-day, and explicitly requested entry creation.
+description: Safely search and read the user's local Day One journals with the independently installed dayone-reader CLI. Use for Day One journal lookup, recent entries, on-this-day, and explicitly requested entry creation.
 license: MIT
 compatibility: macOS with Day One installed and Python 3.11 or newer; entry creation also requires the official dayone CLI.
 ---
 
 # Day One Reader
 
-Use this skill's `scripts/dayone-reader` executable, resolving the path relative to this `SKILL.md`. It is local-only and requires no installation. Do not substitute another journal reader unless the user explicitly configures one.
+Use this skill's `scripts/dayone-reader` wrapper, resolving the path relative to this `SKILL.md`. The wrapper executes only `$DAYONE_READER_CLI` or the fixed default `~/.local/bin/dayone-reader`; it does not search `PATH`.
 
-Run commands in this form:
+The independent CLI source is `https://github.com/v2naix/dayone-reader`. If the wrapper reports that it is missing, stop and explain the prerequisite. Do not install or download it unless the user explicitly asks. A user can install it with:
+
+```bash
+uv tool install git+https://github.com/v2naix/dayone-reader
+```
+
+Run journal commands in this form:
 
 ```bash
 /path/to/this/skill/scripts/dayone-reader journals --json

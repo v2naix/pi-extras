@@ -33,7 +33,7 @@ Before changing anything:
 | `extensions/retro.ts` | `/retro` asks the agent to create an HTML retrospective beside the latest session file | Preferred model may be unavailable; generated HTML loads Tailwind from CDN |
 | `extensions/youtube-transcript.ts` | Registers `youtube_transcript` to download and clean existing YouTube subtitles | `yt-dlp`; subtitles only, no visual analysis |
 | `skills/pi-extras/SKILL.md` | Gives Pi this repository-specific operating guide | Loaded through the package manifest |
-| `skills/dayone-reader/SKILL.md` | Searches and reads local Day One journals with a bundled privacy-limited CLI | macOS, Day One, Python 3.11+; creation requires official `dayone` CLI |
+| `skills/dayone-reader/SKILL.md` | Searches and reads local Day One journals through the independently installed `v2naix/dayone-reader` CLI | macOS, Day One, Python 3.11+, installed reader CLI; creation requires official `dayone` CLI |
 
 ## Choose and Use the Existing Feature
 
