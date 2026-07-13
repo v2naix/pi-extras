@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+CLI=${DAYONE_CLI:-/usr/local/bin/dayone}
+
+case "$CLI" in
+  /*) ;;
+  *)
+    echo "DAYONE_CLI must be an absolute path: $CLI" >&2
+    exit 64
+    ;;
+esac
+
+if [ ! -x "$CLI" ]; then
+  echo "The official Day One CLI is not executable at $CLI. Install or enable it from Day One, or set DAYONE_CLI to its absolute executable path." >&2
+  exit 127
+fi
+
+exec "$CLI" "$@"

@@ -1,6 +1,7 @@
 ---
 name: pi-extras
 description: Understands, uses, and maintains this pi-extras Pi package, including its bundled extensions, slash commands, custom tools, package manifest, installation flow, dependencies, and safety constraints. Use when explaining this repository, choosing one of its Pi features, or adding, changing, debugging, testing, or documenting resources in pi-extras.
+disable-model-invocation: true
 license: MIT
 compatibility: Pi coding agent with Node.js; some extensions additionally require macOS, Zed, yt-dlp, or the external pi-package-catalog repository.
 ---
@@ -33,13 +34,15 @@ Before changing anything:
 | `extensions/retro.ts` | `/retro` asks the agent to create an HTML retrospective beside the latest session file | Preferred model may be unavailable; generated HTML loads Tailwind from CDN |
 | `extensions/youtube-transcript.ts` | Registers `youtube_transcript` to download and clean existing YouTube subtitles | `yt-dlp`; subtitles only, no visual analysis |
 | `skills/pi-extras/SKILL.md` | Gives Pi this repository-specific operating guide | Loaded through the package manifest |
-| `skills/dayone-reader/SKILL.md` | Searches and reads local Day One journals through the independently installed `v2naix/dayone-reader` CLI | macOS, Day One, Python 3.11+, installed reader CLI; creation requires official `dayone` CLI |
+| `skills/dayone-new/SKILL.md` | Creates local Day One entries through the official `dayone` CLI | macOS, Day One, official CLI; creation is non-idempotent |
+| `skills/dayone-reader/SKILL.md` | Searches and reads local Day One journals through the independently installed `v2naix/dayone-reader` CLI | macOS, Day One, Python 3.11+, installed reader CLI |
 
 ## Choose and Use the Existing Feature
 
 - For catalog `status`, `add`, `remove`, `apply`, or eligible `capture` requests, use `pi_package_catalog`; do not directly edit catalog state files.
 - Use catalog `capture` only after the user has directly changed resource selections with `pi config`.
 - For a YouTube summary, use `youtube_transcript` first when available, summarize its returned text, and disclose that visual-only content was not analyzed.
+- Use `dayone-new` only for explicit entry-creation requests and `dayone-reader` for journal lookup; never retry an uncertain creation automatically.
 - Slash commands are interactive user features. Explain the exact command rather than pretending it is a model-callable tool.
 - Do not claim optional integrations are portable: `copy-all` is macOS-specific and `diff` opens Zed.
 
