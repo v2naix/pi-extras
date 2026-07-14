@@ -52,7 +52,14 @@ The reader accesses the local Day One database directly. It does not use the net
 | [`mac-guardrail.ts`](extensions/mac-guardrail.ts) | `tool_call` guard | Adds lightweight macOS protection to agent `bash`, `write`, and `edit` calls: blocks clearly catastrophic operations and asks before risky commands or writes outside the working directory. | macOS; confirmation-required actions fail closed in non-interactive modes. |
 | [`package-catalog.ts`](extensions/package-catalog.ts) | `pi_package_catalog` tool | Lets the agent inspect, add, remove, apply, or capture shared Pi package catalog configuration while serializing mutations. | A separate `pi-package-catalog` checkout. |
 | [`retro.ts`](extensions/retro.ts) | `/retro` | Analyzes detours and possible repository improvements from the latest session and writes an HTML retrospective beside the session file. | Report generation calls a model; the HTML loads Tailwind CSS from a CDN. |
+| [`todo.ts`](extensions/todo.ts) | `todo` tool, `/todos` | Pi's minimal official todo example: manages branch-local tasks through `add`, `toggle`, `list`, and `clear`, with an interactive list. | Adds no workflow prompt guidance; do not enable it alongside another extension that registers `todo` or `/todos`. |
 | [`youtube-transcript.ts`](extensions/youtube-transcript.ts) | `youtube_transcript` tool | Downloads and cleans existing YouTube subtitles, prefers creator-provided tracks, and caches complete long transcripts locally. | `yt-dlp` and network access; analyzes subtitles only, not visuals or audio without subtitles. |
+
+### Minimal todo
+
+`todo.ts` is vendored unchanged from the [official todo example](https://github.com/earendil-works/pi/blob/v0.80.6/packages/coding-agent/examples/extensions/todo.ts) in `@earendil-works/pi-coding-agent` v0.80.6. The original file's SHA-256 is `e46824d00217e25242c186d41837cc84ca81b23f978500323448502a9a424ee2`, and its upstream MIT license is retained in [`extensions/todo.LICENSE`](extensions/todo.LICENSE). It registers only a compact tool definition, with no `promptSnippet` or `promptGuidelines`; task state lives in tool result details so it follows the active session branch.
+
+The extension conflicts with other extensions that use the `todo` tool name or `/todos` command name. Load it in isolation for a temporary trial, and disable `@juicesharp/rpiv-todo` or any other conflicting extension before enabling it normally.
 
 ### Package Catalog setup
 
