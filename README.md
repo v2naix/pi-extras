@@ -25,7 +25,7 @@ pi install git:github.com/v2naix/pi-extras
 | Skill | 功能描述 | 调用方式与环境 |
 | --- | --- | --- |
 | [`pi-extras`](skills/pi-extras/SKILL.md) | 维护本仓库的 Pi 资源：将 Agent 生成或从其他来源取得的 skills 与 extensions 收录到正确的开发仓库，并负责新增、审查、修改、替换和清理移除。 | 相关维护请求可按需加载，也可显式调用 `/skill:pi-extras`；需要 Git 及 `v2naix/pi-extras` 的可写开发检出。 |
-| [`pi-resource-audit`](skills/pi-resource-audit/SKILL.md) | 对 Pi extensions、skills 和 packages 进行静态、证据驱动的审核，覆盖安全、隐私、正确性、质量、供应链和 Pi API 合规性。 | 安装前风险评估或本地资源审核时按需加载，也可显式调用 `/skill:pi-resource-audit`；默认不执行受审代码。 |
+| [`pi-resource-audit`](skills/pi-resource-audit/SKILL.md) | 对 Pi extensions、skills 和 packages 进行静态、证据驱动的审核，覆盖安全、隐私、正确性、质量、供应链和 Pi API 合规性；默认快速筛查，发现高风险信号或明确要求时再完整审计。 | 安装前风险评估或本地资源审核时按需加载，也可显式调用 `/skill:pi-resource-audit`；默认不执行受审代码。 |
 | [`dayone-new`](skills/dayone-new/SKILL.md) | 通过 Day One 官方 `dayone` CLI 新建本地日记，支持日记本、标签、日期、时区、全天、星标、坐标和附件。正文只通过标准输入传递，并将创建操作视为不可幂等。 | 仅显式调用 `/skill:dayone-new`；需要 macOS、Day One 及官方 CLI。 |
 | [`dayone-reader`](skills/dayone-reader/SKILL.md) | 通过独立的 [`v2naix/dayone-reader`](https://github.com/v2naix/dayone-reader) CLI 检索和读取本地 Day One 数据，支持日记本、标签、最近条目、关键词搜索、历年今日和单篇读取；不会修改或删除日记。 | 仅显式调用 `/skill:dayone-reader`；需要 macOS、Day One、Python 3.11+ 及 reader CLI。 |
 
