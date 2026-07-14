@@ -19,5 +19,11 @@
   "dependencies": {
     "@petechu/pi-answer-studio": "0.1.2"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
   "packageManager": "pnpm@10.33.0"
 }
