@@ -48,6 +48,7 @@ The reader accesses the local Day One database directly. It does not use the net
 | [`compact-footer.ts`](extensions/compact-footer.ts) | TUI footer | Replaces the footer with a compact line showing the working directory, Git branch, session name, extension statuses, context usage, model, and thinking level. | TUI only; a Nerd Font is recommended. |
 | [`copy-all.ts`](extensions/copy-all.ts) | `/copy-all` | Copies all user and assistant messages from the active session branch to the system clipboard. | macOS `pbcopy`. |
 | [`diff.ts`](extensions/diff.ts) | `/diff`, `/diff list`, `/diff clear` | Tracks files touched by the last agent run, lists them, or opens a selected file in Zed. | Git; opening files requires the `zed` CLI. |
+| [`herdr-rpiv-ask-user-question.ts`](extensions/herdr-rpiv-ask-user-question.ts) | `herdr:blocked` bridge | Marks the Herdr agent as `blocked` while `ask_user_question` runs and restores it when the tool ends or the session shuts down, instead of leaving third-party questionnaire dialogs as `working`. | Herdr with its Pi integration; `@juicesharp/rpiv-ask-user-question`. |
 | [`mac-guardrail.ts`](extensions/mac-guardrail.ts) | `tool_call` guard | Adds lightweight macOS protection to agent `bash`, `write`, and `edit` calls: blocks clearly catastrophic operations and asks before risky commands or writes outside the working directory. | macOS; confirmation-required actions fail closed in non-interactive modes. |
 | [`package-catalog.ts`](extensions/package-catalog.ts) | `pi_package_catalog` tool | Lets the agent inspect, add, remove, apply, or capture shared Pi package catalog configuration while serializing mutations. | A separate `pi-package-catalog` checkout. |
 | [`retro.ts`](extensions/retro.ts) | `/retro` | Analyzes detours and possible repository improvements from the latest session and writes an HTML retrospective beside the session file. | Report generation calls a model; the HTML loads Tailwind CSS from a CDN. |
@@ -69,6 +70,10 @@ Set `PI_PACKAGE_CATALOG_DIR` if the catalog is installed elsewhere. The tool sup
 - `capture`: save machine-local choices after the user has run `pi config` directly and changed resource selections.
 
 The user should run the interactive `pi config` flow directly in a terminal; the tool intentionally does not start a nested Pi TUI.
+
+### Herdr questionnaire state bridge
+
+`herdr-rpiv-ask-user-question.ts` observes Pi's `ask_user_question` tool lifecycle and emits paired blocked-start/blocked-end events on the shared event bus used by Herdr's official Pi integration. It modifies neither Herdr's managed integration file nor the questionnaire package; without either companion component, it has no visible effect. Reinstalling or updating the Herdr integration does not require reapplying this extension.
 
 ### macOS Guardrail
 
