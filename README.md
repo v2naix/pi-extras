@@ -6,13 +6,15 @@
 
 ## 安装
 
-从本地开发检出安装：
+从本地开发检出安装时，先安装运行时依赖；Pi 的本地路径安装不会代为执行这一步：
 
 ```bash
-pi install ~/.pi/pi-extras
+cd ~/.pi/pi-extras
+pnpm install
+pi install .
 ```
 
-也可以直接安装 Git 仓库，或将该来源加入 `pi-package-catalog` 统一管理：
+也可以直接安装 Git 仓库，或将该来源加入 `pi-package-catalog` 统一管理；Git 安装会自动安装运行时依赖：
 
 ```bash
 pi install git:github.com/v2naix/pi-extras

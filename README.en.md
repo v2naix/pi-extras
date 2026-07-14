@@ -6,13 +6,15 @@ A personally maintained [Pi](https://pi.dev) package for collecting, maintaining
 
 ## Installation
 
-Install from the local development checkout:
+When installing from the local development checkout, install runtime dependencies first; Pi does not do this for local path packages:
 
 ```bash
-pi install ~/.pi/pi-extras
+cd ~/.pi/pi-extras
+pnpm install
+pi install .
 ```
 
-You can also install the Git repository directly or manage the source through `pi-package-catalog`:
+You can also install the Git repository directly or manage the source through `pi-package-catalog`; Git installs install runtime dependencies automatically:
 
 ```bash
 pi install git:github.com/v2naix/pi-extras
