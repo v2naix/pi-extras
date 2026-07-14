@@ -19,6 +19,8 @@ export type GuardrailAssessment =
 	| { action: "confirm" | "block"; reason: string };
 
 const ALLOW: GuardrailAssessment = { action: "allow" };
+const HERDR_BLOCKED_EVENT = "herdr:blocked";
+const HERDR_BLOCKED_LABEL = "Waiting for macOS guardrail approval";
 
 function isInside(root: string, target: string): boolean {
 	const rel = relative(root, target);
@@ -212,6 +214,7 @@ async function enforce(
 	assessment: GuardrailAssessment,
 	detail: string,
 	ctx: ExtensionContext,
+	pi: ExtensionAPI,
 ) {
 	if (assessment.action === "allow") return undefined;
 	if (assessment.action === "block") {
@@ -225,13 +228,21 @@ async function enforce(
 		};
 	}
 
-	const allowed = await ctx.ui.confirm(
-		"macOS guardrail",
-		`${assessment.reason}\n\n${detail}\n\nAllow once?`,
-	);
-	return allowed
-		? undefined
-		: { block: true, reason: `macOS guardrail: ${assessment.reason}; not approved by user` };
+	pi.events.emit(HERDR_BLOCKED_EVENT, {
+		active: true,
+		label: HERDR_BLOCKED_LABEL,
+	});
+	try {
+		const allowed = await ctx.ui.confirm(
+			"macOS guardrail",
+			`${assessment.reason}\n\n${detail}\n\nAllow once?`,
+		);
+		return allowed
+			? undefined
+			: { block: true, reason: `macOS guardrail: ${assessment.reason}; not approved by user` };
+	} finally {
+		pi.events.emit(HERDR_BLOCKED_EVENT, { active: false });
+	}
 }
 
 export default function macGuardrail(pi: ExtensionAPI) {
@@ -256,7 +267,7 @@ export default function macGuardrail(pi: ExtensionAPI) {
 		if (event.toolName === "bash") {
 			const command = inputCommand(event.input);
 			if (!command) return undefined;
-			return enforce(assessBashCommand(command, canonicalCwd, home), command, ctx);
+			return enforce(assessBashCommand(command, canonicalCwd, home), command, ctx, pi);
 		}
 
 		if (event.toolName === "write" || event.toolName === "edit") {
@@ -267,6 +278,7 @@ export default function macGuardrail(pi: ExtensionAPI) {
 				assessFileMutation(canonicalCwd, filePath, home, canonicalPath),
 				canonicalPath,
 				ctx,
+				pi,
 			);
 		}
 

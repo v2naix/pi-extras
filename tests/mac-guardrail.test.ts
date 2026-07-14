@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import macGuardrail, {
 	assessBashCommand,
 	assessFileMutation,
 } from "../extensions/mac-guardrail.ts";
@@ -55,4 +56,46 @@ test("blocks a symlink-resolved protected target supplied by the handler", () =>
 		assessFileMutation(cwd, "apparently-safe", home, "/private/etc/hosts").action,
 		"block",
 	);
+});
+
+test("reports Herdr blocked state while waiting for confirmation", async () => {
+	const handlers = new Map<string, (...args: unknown[]) => unknown>();
+	const blockedEvents: unknown[] = [];
+	let resolveConfirmation!: (allowed: boolean) => void;
+	const confirmation = new Promise<boolean>((resolve) => {
+		resolveConfirmation = resolve;
+	});
+	const pi = {
+		on(name: string, handler: (...args: unknown[]) => unknown) {
+			handlers.set(name, handler);
+		},
+		events: {
+			emit(name: string, data: unknown) {
+				if (name === "herdr:blocked") blockedEvents.push(data);
+			},
+		},
+	};
+
+	macGuardrail(pi as unknown as ExtensionAPI);
+	const toolCall = handlers.get("tool_call");
+	assert.ok(toolCall);
+
+	const pending = toolCall(
+		{ toolName: "bash", input: { command: "sudo true" } },
+		{
+			cwd,
+			hasUI: true,
+			ui: { confirm: () => confirmation },
+		},
+	) as Promise<unknown>;
+
+	assert.deepEqual(blockedEvents, [
+		{ active: true, label: "Waiting for macOS guardrail approval" },
+	]);
+	resolveConfirmation(true);
+	await pending;
+	assert.deepEqual(blockedEvents, [
+		{ active: true, label: "Waiting for macOS guardrail approval" },
+		{ active: false },
+	]);
 });
