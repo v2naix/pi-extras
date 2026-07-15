@@ -1,19 +1,12 @@
-import {
-  CustomEditor,
-  type ExtensionAPI,
-  type KeybindingsManager,
-} from "@earendil-works/pi-coding-agent";
-import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
+import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const DASHED_HORIZONTAL = "╌";
 
 class DashedBorderEditor extends CustomEditor {
-  constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) {
-    super(tui, theme, keybindings);
-
-    const colorBorder = this.borderColor;
-    this.borderColor = (text: string) =>
-      colorBorder(text.replaceAll("─", DASHED_HORIZONTAL));
+  render(width: number): string[] {
+    return super
+      .render(width)
+      .map((line) => line.replaceAll("─", DASHED_HORIZONTAL));
   }
 }
 
