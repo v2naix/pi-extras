@@ -1,5 +1,6 @@
 // Adapted from disler/pi-vs-claude-code at commit
-// 32dfe122cb6d444e91c68b32597274a725d81fa3. See session-digest.LICENSE.
+// 32dfe122cb6d444e91c68b32597274a725d81fa3, with context usage visualization
+// adapted from ttttmr/pi-context v2.1.0. See session-digest.LICENSE.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, type Theme } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem, Component, KeybindingsManager } from "@earendil-works/pi-tui";
@@ -14,6 +15,7 @@ const REDACTED = "[REDACTED]";
 
 type HistoryItemType = "user" | "assistant" | "tool";
 type DigestFilter = "all" | "ai" | "tool" | "user";
+type DigestView = DigestFilter | "context";
 
 interface HistoryItem {
 	type: HistoryItemType;
@@ -23,15 +25,9 @@ interface HistoryItem {
 	elapsed?: string;
 }
 
-interface DigestStats {
-	toolCalls: number;
-	userTurns: number;
-}
-
 interface DigestHistory {
 	items: HistoryItem[];
 	omittedCount: number;
-	stats: DigestStats;
 }
 
 const FILTER_LABELS: Record<DigestFilter, string> = {
@@ -41,23 +37,28 @@ const FILTER_LABELS: Record<DigestFilter, string> = {
 	user: "User",
 };
 
-const FILTER_COMPLETIONS: AutocompleteItem[] = (Object.keys(FILTER_LABELS) as DigestFilter[]).map((filter) => ({
-	value: filter,
-	label: filter,
-	description: `Show ${FILTER_LABELS[filter]} messages`,
-}));
+const FILTER_COMPLETIONS: AutocompleteItem[] = [
+	...(Object.keys(FILTER_LABELS) as DigestFilter[]).map((filter) => ({
+		value: filter,
+		label: filter,
+		description: `Show ${FILTER_LABELS[filter]} messages`,
+	})),
+	{ value: "context", label: "context", description: "Show context usage visualization" },
+];
 
 interface MessageLike {
 	role?: unknown;
 	content?: unknown;
 	timestamp?: unknown;
 	toolName?: unknown;
+	command?: unknown;
 }
 
 interface EntryLike {
 	type?: unknown;
 	timestamp?: unknown;
 	message?: MessageLike;
+	summary?: unknown;
 }
 
 interface ContentBlockLike {
@@ -166,28 +167,233 @@ function matchesFilter(type: HistoryItemType, filter: DigestFilter): boolean {
 	return filter === "all" || (filter === "ai" && type === "assistant") || filter === type;
 }
 
-function parseFilter(args: string): DigestFilter | undefined {
+function parseView(args: string): DigestView | undefined {
 	const normalized = args.trim().toLowerCase();
-	if (!normalized) return "all";
+	if (!normalized) return "user";
 	if (normalized === "assistant") return "ai";
-	if (normalized === "all" || normalized === "ai" || normalized === "tool" || normalized === "user") {
+	if (
+		normalized === "all" ||
+		normalized === "ai" ||
+		normalized === "tool" ||
+		normalized === "user" ||
+		normalized === "context"
+	) {
 		return normalized;
 	}
 	return undefined;
+}
+
+function viewForShortcut(data: string): DigestView | undefined {
+	switch (data.toLowerCase()) {
+		case "a": return "ai";
+		case "u": return "user";
+		case "t": return "tool";
+		case "c": return "context";
+		case "d": return "all";
+		default: return undefined;
+	}
+}
+
+function renderViewShortcuts(theme: Theme, width: number): string[] {
+	const text =
+		` Switch  ${theme.fg("accent", theme.bold("A"))} AI  ` +
+		`${theme.fg("text", theme.bold("U"))} User  ` +
+		`${theme.fg("success", theme.bold("T"))} Tool  ` +
+		`${theme.fg("accent", theme.bold("C"))} Context  ` +
+		`${theme.fg("text", theme.bold("D"))} All  ` +
+		`${theme.fg("muted", "• Esc Close")}`;
+	return new Text(truncateToWidth(text, width), 0, 0).render(width);
+}
+
+function formatTokens(value: number): string {
+	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+	if (value >= 1_000) return `${Math.round(value / 1_000)}k`;
+	return String(value);
+}
+
+function estimateTokens(value: unknown): number {
+	if (typeof value === "string") return Math.ceil(value.length / 4);
+	if (value == null) return 0;
+	try {
+		const serialized = JSON.stringify(value);
+		return Math.ceil((serialized ?? String(value)).length / 4);
+	} catch {
+		return Math.ceil(String(value).length / 4);
+	}
+}
+
+interface ContextCategory {
+	label: string;
+	value: number;
+	color: Parameters<Theme["fg"]>[0];
+	available?: boolean;
+}
+
+interface ContextBreakdown {
+	total: number;
+	limit: number;
+	percent: number;
+	categories: ContextCategory[];
+}
+
+function toContextBreakdown(
+	branch: unknown[],
+	systemPrompt: string,
+	activeToolDefinitions: unknown[],
+	total: number,
+	limit: number,
+	percent: number,
+): ContextBreakdown {
+	let messageTokensRaw = 0;
+	let toolCallTokensRaw = 0;
+	let toolResultTokensRaw = 0;
+
+	for (const rawEntry of branch) {
+		if (!rawEntry || typeof rawEntry !== "object") continue;
+		const entry = rawEntry as EntryLike;
+		if (entry.type === "branch_summary" || entry.type === "compaction") {
+			messageTokensRaw += estimateTokens(entry.summary);
+			continue;
+		}
+		if (entry.type !== "message" || !entry.message) continue;
+
+		const message = entry.message;
+		if (message.role === "toolResult") {
+			if (Array.isArray(message.content)) {
+				for (const rawBlock of message.content) {
+					if (rawBlock && typeof rawBlock === "object" && (rawBlock as ContentBlockLike).type === "text") {
+						toolResultTokensRaw += estimateTokens((rawBlock as ContentBlockLike).text);
+					}
+				}
+			}
+		} else if (message.role === "bashExecution") {
+			toolCallTokensRaw += estimateTokens(message.command);
+		} else if (message.role === "user" || message.role === "assistant") {
+			if (typeof message.content === "string") {
+				messageTokensRaw += estimateTokens(message.content);
+			} else if (Array.isArray(message.content)) {
+				for (const rawBlock of message.content) {
+					if (!rawBlock || typeof rawBlock !== "object") continue;
+					const block = rawBlock as ContentBlockLike;
+					if (block.type === "text") messageTokensRaw += estimateTokens(block.text);
+					if (message.role === "assistant" && block.type === "toolCall") {
+						toolCallTokensRaw += estimateTokens(block);
+					}
+				}
+			}
+		}
+	}
+
+	const systemTokensRaw = estimateTokens(systemPrompt);
+	const toolDefinitionTokensRaw = estimateTokens(activeToolDefinitions);
+	const rawTotal = systemTokensRaw + toolDefinitionTokensRaw + messageTokensRaw + toolCallTokensRaw + toolResultTokensRaw;
+	const ratio = rawTotal > 0 ? total / rawTotal : 1;
+	const systemTokens = Math.round(systemTokensRaw * ratio);
+	const toolDefinitionTokens = Math.round(toolDefinitionTokensRaw * ratio);
+	const messageTokens = Math.round(messageTokensRaw * ratio);
+	const toolCallTokens = Math.round((toolCallTokensRaw + toolResultTokensRaw) * ratio);
+	const accountedTokens = systemTokens + toolDefinitionTokens + messageTokens + toolCallTokens;
+
+	const categories: ContextCategory[] = [
+		{ label: "System Prompt", value: systemTokens, color: "muted" },
+		{ label: "System Tools", value: toolDefinitionTokens, color: "dim" },
+		{ label: "Tool Call", value: toolCallTokens, color: "success" },
+		{ label: "Messages", value: messageTokens, color: "accent" },
+	];
+	const otherTokens = Math.max(0, total - accountedTokens);
+	if (otherTokens > 10) categories.push({ label: "Other", value: otherTokens, color: "dim" });
+	categories.push({
+		label: "Available",
+		value: Math.max(0, limit - total),
+		color: "borderMuted",
+		available: true,
+	});
+
+	return { total, limit, percent, categories };
+}
+
+class ContextUsageUI implements Component {
+	constructor(
+		private readonly breakdown: ContextBreakdown,
+		private readonly onDone: (nextView?: DigestView) => void,
+		private readonly theme: Theme,
+		private readonly keybindings: KeybindingsManager,
+	) {}
+
+	handleInput(data: string): void {
+		const nextView = viewForShortcut(data);
+		if (nextView) {
+			this.onDone(nextView);
+		} else if (this.keybindings.matches(data, "tui.select.cancel")) {
+			this.onDone();
+		}
+	}
+
+	render(width: number): string[] {
+		const { total, limit, percent, categories } = this.breakdown;
+		const theme = this.theme;
+		const container = new Container();
+		container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+		container.addChild(new Text(theme.fg("accent", theme.bold(" Context Usage")), 1, 0));
+		container.addChild(new Spacer(1));
+
+		const gridWidth = 10;
+		const gridHeight = 5;
+		const totalBlocks = gridWidth * gridHeight;
+		const blocks: Array<{ color: ContextCategory["color"]; filled: boolean }> = [];
+		for (const category of categories) {
+			if (category.available) continue;
+			let count = Math.round((category.value / limit) * totalBlocks);
+			if (count === 0 && category.value > 0) count = 1;
+			for (let index = 0; index < count && blocks.length < totalBlocks; index++) {
+				blocks.push({ color: category.color, filled: true });
+			}
+		}
+		while (blocks.length < totalBlocks) blocks.push({ color: "borderMuted", filled: false });
+
+		const gridLines: string[] = [];
+		for (let row = 0; row < gridHeight; row++) {
+			let line = "";
+			for (let column = 0; column < gridWidth; column++) {
+				const block = blocks[row * gridWidth + column];
+				line += theme.fg(block.color, block.filled ? "■ " : "□ ");
+			}
+			gridLines.push(line.trimEnd());
+		}
+
+		const detailLines = [
+			`${theme.fg("text", theme.bold("Total Usage".padEnd(16)))} ${theme.fg("text", theme.bold(formatTokens(total).padStart(7)))} ${theme.fg("text", theme.bold(`(${percent.toFixed(1).padStart(5)}%)`))}`,
+			"",
+			...categories.map((category) => {
+				const icon = category.available ? "□" : "■";
+				const rowPercent = ((category.value / limit) * 100).toFixed(1).padStart(5);
+				return `${theme.fg(category.color, icon)} ${theme.fg("text", category.label.padEnd(14))} ${theme.fg("accent", formatTokens(category.value).padStart(7))} (${rowPercent}%)`;
+			}),
+		];
+
+		const maxRows = Math.max(gridLines.length, detailLines.length);
+		for (let index = 0; index < maxRows; index++) {
+			const left = (gridLines[index] ?? "").padEnd(20);
+			const right = detailLines[index] ?? "";
+			container.addChild(new Text(truncateToWidth(`    ${left}      ${right}`, Math.max(1, width - 2)), 1, 0));
+		}
+		container.addChild(new Spacer(1));
+		container.addChild({ render: (renderWidth) => renderViewShortcuts(theme, renderWidth), invalidate: () => {} });
+		container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+		return container.render(width);
+	}
+
+	invalidate(): void {}
 }
 
 function toDigestHistory(branch: unknown[], filter: DigestFilter): DigestHistory {
 	const messageEntries = branch.filter((entry): entry is EntryLike => {
 		return Boolean(entry && typeof entry === "object" && (entry as EntryLike).type === "message");
 	});
-	const stats: DigestStats = { toolCalls: 0, userTurns: 0 };
 	const matchingEntries: Array<{ entry: EntryLike; type: HistoryItemType }> = [];
 
 	for (const entry of messageEntries) {
 		const role = entry.message?.role;
-		if (role === "toolResult") stats.toolCalls++;
-		if (role === "user") stats.userTurns++;
-
 		const type = historyTypeForRole(role);
 		if (type && matchesFilter(type, filter)) matchingEntries.push({ entry, type });
 	}
@@ -222,7 +428,7 @@ function toDigestHistory(branch: unknown[], filter: DigestFilter): DigestHistory
 		items[index].elapsed = formatElapsed(items[index - 1].timestamp, items[index].timestamp);
 	}
 
-	return { items, omittedCount, stats };
+	return { items, omittedCount };
 }
 
 class ClippedText implements Component {
@@ -255,8 +461,7 @@ class SessionDigestUI implements Component {
 		private readonly items: HistoryItem[],
 		private readonly omittedCount: number,
 		private readonly filter: DigestFilter,
-		private readonly stats: DigestStats,
-		private readonly onDone: () => void,
+		private readonly onDone: (nextView?: DigestView) => void,
 		private readonly requestRender: () => void,
 		private readonly theme: Theme,
 		private readonly keybindings: KeybindingsManager,
@@ -265,6 +470,11 @@ class SessionDigestUI implements Component {
 	}
 
 	handleInput(data: string): void {
+		const nextView = viewForShortcut(data);
+		if (nextView) {
+			this.onDone(nextView);
+			return;
+		}
 		if (this.keybindings.matches(data, "tui.select.cancel")) {
 			this.onDone();
 			return;
@@ -316,7 +526,7 @@ class SessionDigestUI implements Component {
 			new Text(
 				`${theme.fg("accent", theme.bold(" SESSION DIGEST"))} ${theme.fg("muted", "|")} ` +
 					`${theme.fg("text", `Filter: ${FILTER_LABELS[this.filter]}`)} ${theme.fg("muted", "|")} ` +
-					`${theme.fg("success", String(this.items.length))} entries ${theme.fg("muted", `| page ${currentPage}/${pageCount}`)}`,
+					`${theme.fg("accent", String(this.items.length))} entries ${theme.fg("muted", `| page ${currentPage}/${pageCount}`)}`,
 				1,
 				0,
 			),
@@ -329,17 +539,29 @@ class SessionDigestUI implements Component {
 		pageItems.forEach((item, pageIndex) => {
 			const absoluteIndex = pageStart + pageIndex;
 			const selected = absoluteIndex === this.selectedIndex;
-			const badge = item.type === "user" ? "[USER]" : item.type === "assistant" ? "[AI]" : "[TOOL]";
-			const color = item.type === "user" ? "success" : item.type === "assistant" ? "accent" : "toolTitle";
-			const elapsed = item.elapsed ? theme.fg("muted", ` (+${item.elapsed})`) : "";
-			const title = `${theme.fg(color, theme.bold(badge))} ${theme.fg("text", theme.bold(item.title))} ` +
-				`${theme.fg("success", `[${formatTime(item.timestamp)}]`)}${elapsed}`;
+			const color = item.type === "user" ? "text" : item.type === "assistant" ? "accent" : "success";
+			const elapsed = item.elapsed ? theme.fg("dim", ` (+${item.elapsed})`) : "";
+			const timestamp = `[${formatTime(item.timestamp)}]`;
+			let title: string;
+			if (item.type === "tool") {
+				title = `${theme.fg(color, theme.bold("[TOOL]"))} ${theme.fg("text", theme.bold(item.title))} ${theme.fg("muted", timestamp)}${elapsed}`;
+			} else if (this.filter === "all") {
+				const badge = item.type === "user" ? "[user]" : "[ai]";
+				title = `${theme.fg(color, theme.bold(badge))} ${theme.fg("muted", timestamp)}${elapsed}`;
+			} else {
+				const elapsedLabel = item.elapsed ?? "0s";
+				const rowWidth = Math.max(1, width - 4);
+				const separatorWidth = rowWidth - elapsedLabel.length - 1;
+				title = separatorWidth > 0
+					? `${theme.fg("borderMuted", "╌".repeat(separatorWidth))} ${theme.fg(color, theme.bold(elapsedLabel))}`
+					: theme.fg(color, theme.bold(elapsedLabel));
+			}
 			const preview = item.content.replace(/\s+/g, " ").trim();
 			const box = new Box(1, 0, selected ? (text) => theme.bg("selectedBg", text) : undefined);
 			box.addChild(new Text(truncateToWidth(title, Math.max(1, width - 4)), 0, 0));
 			box.addChild(
 				new Text(
-					theme.fg(selected ? "text" : "muted", truncateToWidth(`  ${preview}`, Math.max(1, width - 4), "…")),
+					theme.fg("text", truncateToWidth(`  ${preview}`, Math.max(1, width - 4), "…")),
 					0,
 					0,
 				),
@@ -350,7 +572,15 @@ class SessionDigestUI implements Component {
 		if (this.expanded) {
 			const selected = this.items[this.selectedIndex];
 			container.addChild(new Spacer(1));
-			container.addChild(new Text(theme.fg("accent", theme.bold(` ${selected.title} — details`)), 0, 0));
+			let detailTitle: string;
+			if (selected.type === "tool") {
+				detailTitle = selected.title;
+			} else if (this.filter === "all") {
+				detailTitle = `${selected.type === "user" ? "[user]" : "[ai]"} [${formatTime(selected.timestamp)}]`;
+			} else {
+				detailTitle = selected.elapsed ?? "0s";
+			}
+			container.addChild(new Text(theme.fg("accent", theme.bold(` ${detailTitle} — details`)), 0, 0));
 			const clipped = new ClippedText(selected.content, () => this.detailOffset, DETAIL_LINES);
 			container.addChild(clipped);
 			const lines = container.render(width);
@@ -362,22 +592,16 @@ class SessionDigestUI implements Component {
 					0,
 					0,
 				).render(width),
-				...this.renderStats(width),
+				...renderViewShortcuts(theme, width),
 				...new DynamicBorder((text: string) => theme.fg("borderAccent", text)).render(width),
 			];
 		}
 
 		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("muted", " ↑/↓ Navigate • PgUp/PgDn Page • Enter Details • Esc Close"), 0, 0));
-		container.addChild({ render: (renderWidth) => this.renderStats(renderWidth), invalidate: () => {} });
+		container.addChild(new Text(theme.fg("muted", " ↑/↓ Navigate • PgUp/PgDn Page • Enter Details"), 0, 0));
+		container.addChild({ render: (renderWidth) => renderViewShortcuts(theme, renderWidth), invalidate: () => {} });
 		container.addChild(new DynamicBorder((text: string) => theme.fg("borderAccent", text)));
 		return container.render(width);
-	}
-
-	private renderStats(width: number): string[] {
-		const text = ` Stats  ${this.theme.fg("toolTitle", "Tool calls:")} ${this.theme.fg("text", String(this.stats.toolCalls))}` +
-			` ${this.theme.fg("muted", "|")} ${this.theme.fg("success", "User turns:")} ${this.theme.fg("text", String(this.stats.userTurns))}`;
-		return new Text(truncateToWidth(text, width), 0, 0).render(width);
 	}
 
 	invalidate(): void {}
@@ -385,7 +609,7 @@ class SessionDigestUI implements Component {
 
 export default function (pi: ExtensionAPI): void {
 	pi.registerCommand("digest", {
-		description: "Show a session digest filtered by all, ai, tool, or user",
+		description: "Show session messages or context usage",
 		getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
 			const normalized = prefix.trim().toLowerCase();
 			const matches = FILTER_COMPLETIONS.filter((item) => item.value.startsWith(normalized));
@@ -397,42 +621,79 @@ export default function (pi: ExtensionAPI): void {
 				return;
 			}
 
-			const filter = parseFilter(args);
-			if (!filter) {
-				ctx.ui.notify("Usage: /digest [all|ai|tool|user]", "warning");
+			const view = parseView(args);
+			if (!view) {
+				ctx.ui.notify("Usage: /digest [all|ai|tool|user|context]", "warning");
 				return;
 			}
 
 			const branch = ctx.sessionManager.getBranch() as unknown[];
-			const { items, omittedCount, stats } = toDigestHistory(branch, filter);
-			if (items.length === 0) {
-				ctx.ui.notify(`No ${FILTER_LABELS[filter]} messages found in the current session branch.`, "warning");
-				return;
-			}
+			let currentView: DigestView | undefined = view;
+			while (currentView) {
+				if (currentView === "context") {
+					const usage = ctx.getContextUsage();
+					const total = usage?.tokens;
+					const limit = usage?.contextWindow;
+					const percent = usage?.percent;
+					if (
+						typeof total !== "number" ||
+						typeof limit !== "number" ||
+						typeof percent !== "number" ||
+						!Number.isFinite(total) ||
+						!Number.isFinite(limit) ||
+						!Number.isFinite(percent) ||
+						limit <= 0
+					) {
+						ctx.ui.notify("Context usage info not available.", "warning");
+						return;
+					}
 
-			await ctx.ui.custom(
-				(tui, theme, keybindings, done) => {
-					const component = new SessionDigestUI(
-						items,
-						omittedCount,
-						filter,
-						stats,
-						() => done(undefined),
-						() => tui.requestRender(),
-						theme,
-						keybindings,
+					const activeTools = new Set(pi.getActiveTools());
+					const activeToolDefinitions = pi.getAllTools().filter((tool) => activeTools.has(tool.name));
+					const breakdown = toContextBreakdown(
+						branch,
+						ctx.getSystemPrompt(),
+						activeToolDefinitions,
+						total,
+						limit,
+						percent,
 					);
-					return component;
-				},
-				{
-					overlay: true,
-					overlayOptions: {
-						width: "80%",
-						maxHeight: "90%",
-						anchor: "center",
+					currentView = await ctx.ui.custom<DigestView | undefined>(
+						(_tui, theme, keybindings, done) =>
+							new ContextUsageUI(breakdown, (nextView) => done(nextView), theme, keybindings),
+						{ overlay: true },
+					);
+					continue;
+				}
+
+				const filter = currentView;
+				const { items, omittedCount } = toDigestHistory(branch, filter);
+				if (items.length === 0) {
+					ctx.ui.notify(`No ${FILTER_LABELS[filter]} messages found in the current session branch.`, "warning");
+					return;
+				}
+
+				currentView = await ctx.ui.custom<DigestView | undefined>(
+					(tui, theme, keybindings, done) =>
+						new SessionDigestUI(
+							items,
+							omittedCount,
+							filter,
+							(nextView) => done(nextView),
+							() => tui.requestRender(),
+							theme,
+							keybindings,
+						),
+					{
+						overlay: true,
+						overlayOptions: {
+							width: "80%",
+							maxHeight: "90%",
+							anchor: "center",
+						},
 					},
-				},
-			);
+				);
+			}
 		},
 	});
 }
