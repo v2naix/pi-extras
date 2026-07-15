@@ -57,8 +57,15 @@ The reader accesses the local Day One database directly. It does not use the net
 | [`package-catalog.ts`](extensions/package-catalog.ts) | `pi_package_catalog` tool | Lets the agent inspect, add, remove, apply, or capture shared Pi package catalog configuration while serializing mutations. | A separate `pi-package-catalog` checkout. |
 | [`retro.ts`](extensions/retro.ts) | `/retro` | Analyzes detours and possible repository improvements from the latest session and writes an HTML retrospective beside the session file. | Report generation calls a model; the HTML loads Tailwind CSS from a CDN. |
 | [`session-digest.ts`](extensions/session-digest.ts) | `/digest [all\|ai\|tool\|user\|context]` | Filters and browses messages from the current session branch in a paged overlay; the `context` argument shows context usage and token distribution. | TUI only; displays at most the latest 500 messages per message filter and limits displayed content per entry. |
+| [`skill-visibility.ts`](extensions/skill-visibility.ts) | `/skill-visibility` | Reads every skill in the current environment and provides a searchable secondary configuration screen for hiding selected skills from the system prompt while preserving `/skill:name` invocation. | Configuration UI requires TUI mode; selections are stored globally in the Pi agent directory. |
 | [`todo.ts`](extensions/todo.ts) | `todo` tool, `/todos` | Pi's minimal official todo example: manages branch-local tasks through `add`, `toggle`, `list`, and `clear`, with an interactive list. | Adds no workflow prompt guidance; do not enable it alongside another extension that registers `todo` or `/todos`. |
 | [`youtube-transcript.ts`](extensions/youtube-transcript.ts) | `youtube_transcript` tool | Downloads and cleans existing YouTube subtitles, prefers creator-provided tracks, and caches complete long transcripts locally. | `yt-dlp` and network access; analyzes subtitles only, not visuals or audio without subtitles. |
+
+### Skill system-prompt visibility
+
+Pi's current extension API cannot register nested menus inside the built-in `pi config` UI. Enable `skill-visibility.ts` in `pi config`, then open the extension's own secondary configuration screen with `/skill-visibility`. The screen reads all user, project, and package skills loaded in the current session, supports search, and persists each choice by the skill file path.
+
+A skill set to “manual invocation only” is removed from the model-visible `<available_skills>` list while `/skill:name` remains available. Configuration is written to `~/.pi/agent/skill-visibility.json` (the actual location follows Pi's agent directory), so no third-party skill file is modified and package updates do not erase the selection. Skills that already declare `disable-model-invocation: true` are shown as intrinsically hidden and are not overridden in the opposite direction.
 
 ### Session Digest
 
