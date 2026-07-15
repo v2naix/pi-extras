@@ -16,9 +16,6 @@
     ]
   },
   "license": "MIT",
-  "dependencies": {
-    "@petechu/pi-answer-studio": "0.1.2"
-  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",

@@ -122,7 +122,7 @@ export async function installHerdrAnswerStudio(
   await answerStudioFactory(companionPi);
   if (!answerHandler) {
     throw new Error(
-      "Answer Studio did not register /answer; expected @petechu/pi-answer-studio 0.1.2",
+      "Answer Studio did not register /answer; bundled implementation is invalid",
     );
   }
 
