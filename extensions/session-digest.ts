@@ -1,8 +1,8 @@
 // Adapted from disler/pi-vs-claude-code at commit
-// 32dfe122cb6d444e91c68b32597274a725d81fa3. See session-replay.LICENSE.
+// 32dfe122cb6d444e91c68b32597274a725d81fa3. See session-digest.LICENSE.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, type Theme } from "@earendil-works/pi-coding-agent";
-import type { Component, KeybindingsManager } from "@earendil-works/pi-tui";
+import type { AutocompleteItem, Component, KeybindingsManager } from "@earendil-works/pi-tui";
 import { Box, Container, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 
 const MAX_ENTRIES = 500;
@@ -12,13 +12,40 @@ const PAGE_SIZE = 5;
 const DETAIL_LINES = 10;
 const REDACTED = "[REDACTED]";
 
+type HistoryItemType = "user" | "assistant" | "tool";
+type DigestFilter = "all" | "ai" | "tool" | "user";
+
 interface HistoryItem {
-	type: "user" | "assistant" | "tool";
+	type: HistoryItemType;
 	title: string;
 	content: string;
 	timestamp: Date;
 	elapsed?: string;
 }
+
+interface DigestStats {
+	toolCalls: number;
+	userTurns: number;
+}
+
+interface DigestHistory {
+	items: HistoryItem[];
+	omittedCount: number;
+	stats: DigestStats;
+}
+
+const FILTER_LABELS: Record<DigestFilter, string> = {
+	all: "All",
+	ai: "AI",
+	tool: "Tool",
+	user: "User",
+};
+
+const FILTER_COMPLETIONS: AutocompleteItem[] = (Object.keys(FILTER_LABELS) as DigestFilter[]).map((filter) => ({
+	value: filter,
+	label: filter,
+	description: `Show ${FILTER_LABELS[filter]} messages`,
+}));
 
 interface MessageLike {
 	role?: unknown;
@@ -128,31 +155,62 @@ function extractContent(message: MessageLike): string {
 	return limitContent(parts.join("\n"));
 }
 
-function toHistoryItems(branch: unknown[]): { items: HistoryItem[]; omittedCount: number } {
+function historyTypeForRole(role: unknown): HistoryItemType | undefined {
+	if (role === "user") return "user";
+	if (role === "assistant") return "assistant";
+	if (role === "toolResult") return "tool";
+	return undefined;
+}
+
+function matchesFilter(type: HistoryItemType, filter: DigestFilter): boolean {
+	return filter === "all" || (filter === "ai" && type === "assistant") || filter === type;
+}
+
+function parseFilter(args: string): DigestFilter | undefined {
+	const normalized = args.trim().toLowerCase();
+	if (!normalized) return "all";
+	if (normalized === "assistant") return "ai";
+	if (normalized === "all" || normalized === "ai" || normalized === "tool" || normalized === "user") {
+		return normalized;
+	}
+	return undefined;
+}
+
+function toDigestHistory(branch: unknown[], filter: DigestFilter): DigestHistory {
 	const messageEntries = branch.filter((entry): entry is EntryLike => {
 		return Boolean(entry && typeof entry === "object" && (entry as EntryLike).type === "message");
 	});
-	const omittedCount = Math.max(0, messageEntries.length - MAX_ENTRIES);
-	const recentEntries = messageEntries.slice(-MAX_ENTRIES);
+	const stats: DigestStats = { toolCalls: 0, userTurns: 0 };
+	const matchingEntries: Array<{ entry: EntryLike; type: HistoryItemType }> = [];
+
+	for (const entry of messageEntries) {
+		const role = entry.message?.role;
+		if (role === "toolResult") stats.toolCalls++;
+		if (role === "user") stats.userTurns++;
+
+		const type = historyTypeForRole(role);
+		if (type && matchesFilter(type, filter)) matchingEntries.push({ entry, type });
+	}
+
+	const omittedCount = Math.max(0, matchingEntries.length - MAX_ENTRIES);
+	const recentEntries = matchingEntries.slice(-MAX_ENTRIES);
 	const items: HistoryItem[] = [];
 
-	for (const entry of recentEntries) {
+	for (const { entry, type } of recentEntries) {
 		const message = entry.message;
 		if (!message) continue;
-
-		const role = message.role;
 		const content = extractContent(message);
 		if (!content) continue;
 		const timestamp = parseTimestamp(message.timestamp, entry.timestamp);
 
-		if (role === "user") {
-			items.push({ type: "user", title: "User Prompt", content, timestamp });
-		} else if (role === "assistant") {
-			items.push({ type: "assistant", title: "Assistant", content, timestamp });
-		} else if (role === "toolResult") {
+		if (type === "user") {
+			items.push({ type, title: "User Prompt", content, timestamp });
+		} else if (type === "assistant") {
+			items.push({ type, title: "Assistant", content, timestamp });
+		} else {
 			const rawToolName = typeof message.toolName === "string" ? message.toolName : "tool";
 			items.push({
-				type: "tool",
+				type,
 				title: `Tool: ${sanitizeTerminalText(rawToolName)}`,
 				content,
 				timestamp,
@@ -164,7 +222,7 @@ function toHistoryItems(branch: unknown[]): { items: HistoryItem[]; omittedCount
 		items[index].elapsed = formatElapsed(items[index - 1].timestamp, items[index].timestamp);
 	}
 
-	return { items, omittedCount };
+	return { items, omittedCount, stats };
 }
 
 class ClippedText implements Component {
@@ -187,7 +245,7 @@ class ClippedText implements Component {
 	invalidate(): void {}
 }
 
-class SessionReplayUI implements Component {
+class SessionDigestUI implements Component {
 	private selectedIndex: number;
 	private expanded = false;
 	private detailOffset = 0;
@@ -196,6 +254,8 @@ class SessionReplayUI implements Component {
 	constructor(
 		private readonly items: HistoryItem[],
 		private readonly omittedCount: number,
+		private readonly filter: DigestFilter,
+		private readonly stats: DigestStats,
 		private readonly onDone: () => void,
 		private readonly requestRender: () => void,
 		private readonly theme: Theme,
@@ -251,11 +311,12 @@ class SessionReplayUI implements Component {
 		const pageCount = Math.max(1, Math.ceil(this.items.length / PAGE_SIZE));
 		const currentPage = Math.floor(pageStart / PAGE_SIZE) + 1;
 
-		container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+		container.addChild(new DynamicBorder((text: string) => theme.fg("borderAccent", text)));
 		container.addChild(
 			new Text(
-				`${theme.fg("accent", theme.bold(" SESSION REPLAY"))} ${theme.fg("dim", "|")} ` +
-					`${theme.fg("success", String(this.items.length))} entries ${theme.fg("dim", `| page ${currentPage}/${pageCount}`)}`,
+				`${theme.fg("accent", theme.bold(" SESSION DIGEST"))} ${theme.fg("muted", "|")} ` +
+					`${theme.fg("text", `Filter: ${FILTER_LABELS[this.filter]}`)} ${theme.fg("muted", "|")} ` +
+					`${theme.fg("success", String(this.items.length))} entries ${theme.fg("muted", `| page ${currentPage}/${pageCount}`)}`,
 				1,
 				0,
 			),
@@ -268,14 +329,21 @@ class SessionReplayUI implements Component {
 		pageItems.forEach((item, pageIndex) => {
 			const absoluteIndex = pageStart + pageIndex;
 			const selected = absoluteIndex === this.selectedIndex;
-			const icon = item.type === "user" ? "👤" : item.type === "assistant" ? "🤖" : "🛠️";
-			const color = item.type === "user" ? "success" : item.type === "assistant" ? "accent" : "warning";
-			const elapsed = item.elapsed ? theme.fg("dim", ` (+${item.elapsed})`) : "";
-			const title = `${theme.fg(color, icon)} ${theme.bold(item.title)} ${theme.fg("success", `[${formatTime(item.timestamp)}]`)}${elapsed}`;
+			const badge = item.type === "user" ? "[USER]" : item.type === "assistant" ? "[AI]" : "[TOOL]";
+			const color = item.type === "user" ? "success" : item.type === "assistant" ? "accent" : "toolTitle";
+			const elapsed = item.elapsed ? theme.fg("muted", ` (+${item.elapsed})`) : "";
+			const title = `${theme.fg(color, theme.bold(badge))} ${theme.fg("text", theme.bold(item.title))} ` +
+				`${theme.fg("success", `[${formatTime(item.timestamp)}]`)}${elapsed}`;
 			const preview = item.content.replace(/\s+/g, " ").trim();
 			const box = new Box(1, 0, selected ? (text) => theme.bg("selectedBg", text) : undefined);
 			box.addChild(new Text(truncateToWidth(title, Math.max(1, width - 4)), 0, 0));
-			box.addChild(new Text(theme.fg("dim", truncateToWidth(`  ${preview}`, Math.max(1, width - 4), "…")), 0, 0));
+			box.addChild(
+				new Text(
+					theme.fg(selected ? "text" : "muted", truncateToWidth(`  ${preview}`, Math.max(1, width - 4), "…")),
+					0,
+					0,
+				),
+			);
 			container.addChild(box);
 		});
 
@@ -290,44 +358,65 @@ class SessionReplayUI implements Component {
 			return [
 				...lines,
 				...new Text(
-					theme.fg("dim", ` PgUp/PgDn Scroll details (${Math.min(this.detailOffset + 1, Math.max(1, this.detailLineCount))}-${Math.min(this.detailOffset + DETAIL_LINES, this.detailLineCount)}/${this.detailLineCount})`),
+					theme.fg("muted", ` PgUp/PgDn Scroll details (${Math.min(this.detailOffset + 1, Math.max(1, this.detailLineCount))}-${Math.min(this.detailOffset + DETAIL_LINES, this.detailLineCount)}/${this.detailLineCount})`),
 					0,
 					0,
 				).render(width),
-				...new DynamicBorder((text: string) => theme.fg("accent", text)).render(width),
+				...this.renderStats(width),
+				...new DynamicBorder((text: string) => theme.fg("borderAccent", text)).render(width),
 			];
 		}
 
 		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("dim", " ↑/↓ Navigate • PgUp/PgDn Page • Enter Details • Esc Close"), 0, 0));
-		container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+		container.addChild(new Text(theme.fg("muted", " ↑/↓ Navigate • PgUp/PgDn Page • Enter Details • Esc Close"), 0, 0));
+		container.addChild({ render: (renderWidth) => this.renderStats(renderWidth), invalidate: () => {} });
+		container.addChild(new DynamicBorder((text: string) => theme.fg("borderAccent", text)));
 		return container.render(width);
+	}
+
+	private renderStats(width: number): string[] {
+		const text = ` Stats  ${this.theme.fg("toolTitle", "Tool calls:")} ${this.theme.fg("text", String(this.stats.toolCalls))}` +
+			` ${this.theme.fg("muted", "|")} ${this.theme.fg("success", "User turns:")} ${this.theme.fg("text", String(this.stats.userTurns))}`;
+		return new Text(truncateToWidth(text, width), 0, 0).render(width);
 	}
 
 	invalidate(): void {}
 }
 
 export default function (pi: ExtensionAPI): void {
-	pi.registerCommand("replay", {
-		description: "Show a bounded, local timeline of the current session",
-		handler: async (_args, ctx) => {
+	pi.registerCommand("digest", {
+		description: "Show a session digest filtered by all, ai, tool, or user",
+		getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
+			const normalized = prefix.trim().toLowerCase();
+			const matches = FILTER_COMPLETIONS.filter((item) => item.value.startsWith(normalized));
+			return matches.length > 0 ? matches : null;
+		},
+		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui") {
-				if (ctx.hasUI) ctx.ui.notify("Session replay is available only in TUI mode.", "warning");
+				if (ctx.hasUI) ctx.ui.notify("Session Digest is available only in TUI mode.", "warning");
+				return;
+			}
+
+			const filter = parseFilter(args);
+			if (!filter) {
+				ctx.ui.notify("Usage: /digest [all|ai|tool|user]", "warning");
 				return;
 			}
 
 			const branch = ctx.sessionManager.getBranch() as unknown[];
-			const { items, omittedCount } = toHistoryItems(branch);
+			const { items, omittedCount, stats } = toDigestHistory(branch, filter);
 			if (items.length === 0) {
-				ctx.ui.notify("No replayable session history found.", "warning");
+				ctx.ui.notify(`No ${FILTER_LABELS[filter]} messages found in the current session branch.`, "warning");
 				return;
 			}
 
 			await ctx.ui.custom(
 				(tui, theme, keybindings, done) => {
-					const component = new SessionReplayUI(
+					const component = new SessionDigestUI(
 						items,
 						omittedCount,
+						filter,
+						stats,
 						() => done(undefined),
 						() => tui.requestRender(),
 						theme,
