@@ -3,6 +3,7 @@ name: pi-extras
 description: Curates reusable Pi skills and extensions in the canonical v2naix/pi-extras repository. Use when an agent has created or obtained a Pi resource that should be collected there, or when adding, importing, modifying, replacing, or removing a skill or extension from that collection.
 license: MIT
 compatibility: Pi coding agent with Git and a writable canonical checkout of v2naix/pi-extras.
+disable-model-invocation: true
 ---
 
 # Maintain pi-extras

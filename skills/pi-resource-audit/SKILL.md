@@ -3,6 +3,7 @@ name: pi-resource-audit
 description: Audit Pi extensions, skills, and packages for security, privacy, correctness, quality, and API compliance. Use for pre-installation risk screening or full review of an installed or local Pi resource.
 license: MIT
 compatibility: Pi coding agent with filesystem inspection tools and access to its installed documentation.
+disable-model-invocation: true
 ---
 
 # Pi Resource Audit
