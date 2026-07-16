@@ -97,9 +97,91 @@ export function assessFileMutation(
 }
 
 function shellWords(text: string): string[] {
-	return [...text.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|([^\s]+)/g)]
-		.map((match) => match[1] ?? match[2] ?? match[3] ?? "")
-		.filter(Boolean);
+	const words: string[] = [];
+	let word = "";
+	let quote: "'" | '"' | undefined;
+	let started = false;
+
+	for (let index = 0; index < text.length; index += 1) {
+		const char = text[index]!;
+		if (quote) {
+			if (char === quote) {
+				quote = undefined;
+			} else if (char === "\\" && quote === '"' && index + 1 < text.length) {
+				word += text[++index];
+			} else {
+				word += char;
+			}
+			started = true;
+		} else if (char === "'" || char === '"') {
+			quote = char;
+			started = true;
+		} else if (char === "\\" && index + 1 < text.length) {
+			word += text[++index];
+			started = true;
+		} else if (/\s/.test(char)) {
+			if (started) words.push(word);
+			word = "";
+			started = false;
+		} else {
+			word += char;
+			started = true;
+		}
+	}
+
+	if (started) words.push(word);
+	return words;
+}
+
+function shellCommandSegments(command: string): string[] {
+	const segments: string[] = [];
+	let start = 0;
+	let quote: "'" | '"' | undefined;
+
+	for (let index = 0; index < command.length; index += 1) {
+		const char = command[index]!;
+		if (char === "\\" && quote !== "'" && index + 1 < command.length) {
+			index += 1;
+		} else if (quote) {
+			if (char === quote) quote = undefined;
+		} else if (char === "'" || char === '"') {
+			quote = char;
+		} else if (char === ";" || char === "|" || char === "&" || char === "\n") {
+			segments.push(command.slice(start, index));
+			start = index + 1;
+		}
+	}
+
+	segments.push(command.slice(start));
+	return segments;
+}
+
+function shellInterpreterPayloads(command: string): string[] {
+	const payloads: string[] = [];
+	const wrappers = new Set(["command", "builtin", "doas", "nohup", "sudo"]);
+
+	for (const segment of shellCommandSegments(command)) {
+		const words = shellWords(segment);
+		let index = 0;
+		while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index] ?? "")) index += 1;
+		while (wrappers.has(words[index] ?? "")) index += 1;
+		if (words[index] === "env") {
+			index += 1;
+			while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index] ?? "")) index += 1;
+		}
+
+		const interpreter = basename(words[index] ?? "");
+		if (!new Set(["sh", "bash", "zsh"]).has(interpreter)) continue;
+		const commandOption = words
+			.slice(index + 1)
+			.findIndex((word) => /^-[A-Za-z]*c[A-Za-z]*$/.test(word));
+		if (commandOption >= 0) {
+			const payload = words[index + commandOption + 2];
+			if (payload !== undefined) payloads.push(payload);
+		}
+	}
+
+	return payloads;
 }
 
 function commandPath(token: string, cwd: string, home: string): string | undefined {
@@ -179,10 +261,13 @@ const CONFIRM_COMMANDS: Array<[RegExp, string]> = [
 	[/\bdiskutil\b/i, "diskutil can change disks and volumes"],
 ];
 
-export function assessBashCommand(
+const MAX_SHELL_INTERPRETER_DEPTH = 8;
+
+function assessBashCommandAtDepth(
 	command: string,
-	cwd = process.cwd(),
-	home = homedir(),
+	cwd: string,
+	home: string,
+	depth: number,
 ): GuardrailAssessment {
 	const recursiveAssessment = assessRecursiveCommandTargets(command, cwd, home);
 	if (recursiveAssessment?.action === "block") return recursiveAssessment;
@@ -191,13 +276,37 @@ export function assessBashCommand(
 		if (pattern.test(command)) return { action: "block", reason };
 	}
 
+	let nestedConfirmation: GuardrailAssessment | undefined;
+	const payloads = shellInterpreterPayloads(command);
+	if (payloads.length > 0 && depth >= MAX_SHELL_INTERPRETER_DEPTH) {
+		nestedConfirmation = {
+			action: "confirm",
+			reason: "shell interpreter nesting is too deep to assess safely",
+		};
+	} else {
+		for (const payload of payloads) {
+			const assessment = assessBashCommandAtDepth(payload, cwd, home, depth + 1);
+			if (assessment.action === "block") return assessment;
+			if (assessment.action === "confirm") nestedConfirmation = assessment;
+		}
+	}
+
 	if (recursiveAssessment) return recursiveAssessment;
+	if (nestedConfirmation) return nestedConfirmation;
 
 	for (const [pattern, reason] of CONFIRM_COMMANDS) {
 		if (pattern.test(command)) return { action: "confirm", reason };
 	}
 
 	return ALLOW;
+}
+
+export function assessBashCommand(
+	command: string,
+	cwd = process.cwd(),
+	home = homedir(),
+): GuardrailAssessment {
+	return assessBashCommandAtDepth(command, cwd, home, 0);
 }
 
 function inputPath(input: unknown): string | undefined {

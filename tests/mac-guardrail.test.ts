@@ -37,6 +37,23 @@ test("uses cwd when assessing recursive relative targets", () => {
 	assert.equal(assessBashCommand("chmod -R 000 .", "/System", home).action, "block");
 });
 
+test("blocks catastrophic commands passed to shell interpreters", () => {
+	assert.equal(assessBashCommand("sh -c 'rm -rf /'", cwd, home).action, "block");
+	assert.equal(assessBashCommand("bash -c 'rm -rf /System/*'", cwd, home).action, "block");
+	assert.equal(assessBashCommand("bash -lc 'rm -rf /'", cwd, home).action, "block");
+	assert.equal(assessBashCommand('zsh -c "rm -fr ~/"', cwd, home).action, "block");
+	assert.equal(assessBashCommand("zsh -fc 'rm -rf /System/*'", cwd, home).action, "block");
+	assert.equal(assessBashCommand("bash -c 'pnpm test'", cwd, home).action, "allow");
+});
+
+test("bounds nested shell interpreter assessment", () => {
+	let command = "echo safe";
+	for (let depth = 0; depth < 10; depth += 1) {
+		command = `bash -c ${JSON.stringify(command)}`;
+	}
+	assert.equal(assessBashCommand(command, cwd, home).action, "confirm");
+});
+
 test("allows project writes and confirms writes elsewhere", () => {
 	assert.deepEqual(assessFileMutation(cwd, "src/index.ts", home), { action: "allow" });
 	assert.equal(assessFileMutation(cwd, "../other/file.ts", home).action, "confirm");

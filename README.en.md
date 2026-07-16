@@ -102,9 +102,9 @@ The user should run the interactive `pi config` flow directly in a terminal; the
 
 ### macOS Guardrail
 
-`mac-guardrail.ts` follows a low-friction policy: ordinary in-project development proceeds without prompts; recursive deletion, `sudo`, service unloading, disk utilities, and similar risky commands require one-time confirmation. Disk erasure, raw-disk writes, recursive deletion of critical system locations, disabling SIP/Gatekeeper, and direct writes to system directories, SSH/GPG credentials, keychains, and similar paths are always blocked. A theme-aware `mac-guard` label on the right side of the status bar indicates that the extension is loaded.
+`mac-guardrail.ts` follows a low-friction policy: ordinary in-project development proceeds without prompts; recursive deletion, `sudo`, service unloading, disk utilities, and similar risky commands require one-time confirmation. Disk erasure, raw-disk writes, recursive deletion of critical system locations, disabling SIP/Gatekeeper, and direct writes to system directories, SSH/GPG credentials, keychains, and similar paths are always blocked. Commands passed directly to `sh -c`, `bash -c`, or `zsh -c` with conventional shell quoting are assessed by the same rules; excessive nesting requires confirmation. A theme-aware `mac-guard` label on the right side of the status bar indicates that the extension is loaded.
 
-This is defense in depth, not a macOS sandbox. It cannot reliably understand every obfuscated shell command, code executed inside an interpreter, or the side effects of unknown third-party tools, so it cannot mathematically guarantee that the system will never be damaged. Keep independent backups such as Time Machine, and use a container, virtual machine, or OS-level sandbox when stronger isolation is required.
+This is defense in depth, not a macOS sandbox. It still cannot reliably understand `eval`, `source`, command substitutions, dynamically generated or encoded/obfuscated commands, or the side effects of unknown third-party tools, so it cannot mathematically guarantee that the system will never be damaged. Keep independent backups such as Time Machine, and use a container, virtual machine, or OS-level sandbox when stronger isolation is required.
 
 ## Repository structure
 
