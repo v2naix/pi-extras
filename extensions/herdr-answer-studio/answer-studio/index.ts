@@ -20,6 +20,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type { AnswerStudioBridge } from "../core.ts";
 import { BorderedLoader, getAgentDir } from "@earendil-works/pi-coding-agent";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -126,7 +127,10 @@ async function loadAnswerSettings(
   return merged;
 }
 
-export default function (pi: ExtensionAPI) {
+export default function (
+  pi: ExtensionAPI,
+  bridge?: AnswerStudioBridge,
+) {
   const answerHandler = async (ctx: ExtensionContext) => {
     if (!ctx.hasUI) {
       ctx.ui.notify("answer requires interactive mode", "error");
@@ -285,6 +289,13 @@ export default function (pi: ExtensionAPI) {
 
     if (extractionResult.questions.length === 0) {
       ctx.ui.notify("No questions found in the last message", "info");
+      return;
+    }
+
+    if (extractionResult.questions.length === 1) {
+      // The assistant's original question is already visible. Keep Herdr in
+      // its blocked state, but let the user answer through Pi's normal editor.
+      bridge?.onSingleQuestion();
       return;
     }
 

@@ -13,8 +13,14 @@ type CommandOptions = {
   handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 };
 
+export interface AnswerStudioBridge {
+  /** Keep Herdr blocked after /answer returns so the normal editor can answer. */
+  onSingleQuestion: () => void;
+}
+
 export type AnswerStudioFactory = (
   pi: ExtensionAPI,
+  bridge: AnswerStudioBridge,
 ) => void | Promise<void>;
 
 /**
@@ -72,6 +78,7 @@ export async function installHerdrAnswerStudio(
   let answerHandler: CommandOptions["handler"] | undefined;
   let processedAssistantId: string | undefined;
   let studioActive = false;
+  let keepBlockedAfterAnswer = false;
 
   const setStudioActive = (active: boolean) => {
     if (active === studioActive) return;
@@ -90,11 +97,16 @@ export async function installHerdrAnswerStudio(
       throw new Error("Answer Studio /answer handler is unavailable");
     }
 
+    keepBlockedAfterAnswer = false;
     setStudioActive(true);
+    let completed = false;
     try {
       await answerHandler(args, ctx);
+      completed = true;
     } finally {
-      setStudioActive(false);
+      if (!completed || !keepBlockedAfterAnswer) {
+        setStudioActive(false);
+      }
     }
   };
 
@@ -119,7 +131,11 @@ export async function installHerdrAnswerStudio(
     },
   });
 
-  await answerStudioFactory(companionPi);
+  await answerStudioFactory(companionPi, {
+    onSingleQuestion: () => {
+      keepBlockedAfterAnswer = true;
+    },
+  });
   if (!answerHandler) {
     throw new Error(
       "Answer Studio did not register /answer; bundled implementation is invalid",
@@ -128,6 +144,7 @@ export async function installHerdrAnswerStudio(
 
   pi.on("session_start", () => {
     processedAssistantId = undefined;
+    keepBlockedAfterAnswer = false;
     setStudioActive(false);
   });
 
@@ -150,10 +167,12 @@ export async function installHerdrAnswerStudio(
   });
 
   pi.on("agent_start", () => {
+    keepBlockedAfterAnswer = false;
     if (studioActive) setStudioActive(false);
   });
 
   pi.on("session_shutdown", () => {
+    keepBlockedAfterAnswer = false;
     setStudioActive(false);
   });
 }

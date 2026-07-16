@@ -68,6 +68,33 @@ test("automatic invocation calls the captured handler without messaging the mode
   ]);
 });
 
+test("keeps Herdr blocked for a single question until the user answers", async () => {
+  const harness = createHarness();
+  await installHerdrAnswerStudio(harness.pi as any, (pi, bridge) => {
+    pi.registerCommand("answer", {
+      async handler() {
+        bridge.onSingleQuestion();
+      },
+    });
+  });
+
+  const agentSettled = harness.handlers.get("agent_settled");
+  assert.ok(agentSettled);
+  await agentSettled({}, ctx);
+
+  assert.deepEqual(harness.blockedEvents, [
+    { active: true, label: "Waiting for Answer Studio response" },
+  ]);
+
+  const agentStart = harness.handlers.get("agent_start");
+  assert.ok(agentStart);
+  await agentStart({}, ctx);
+  assert.deepEqual(harness.blockedEvents, [
+    { active: true, label: "Waiting for Answer Studio response" },
+    { active: false },
+  ]);
+});
+
 test("keeps /answer registered and blocked during manual invocation", async () => {
   const harness = createHarness();
   let answerInvocations = 0;
@@ -91,9 +118,10 @@ test("keeps /answer registered and blocked during manual invocation", async () =
 
 test("clears blocked state when Answer Studio fails", async () => {
   const harness = createHarness();
-  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+  await installHerdrAnswerStudio(harness.pi as any, (pi, bridge) => {
     pi.registerCommand("answer", {
       async handler() {
+        bridge.onSingleQuestion();
         throw new Error("studio failed");
       },
     });
