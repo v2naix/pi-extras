@@ -54,8 +54,12 @@ test("bounds nested shell interpreter assessment", () => {
 	assert.equal(assessBashCommand(command, cwd, home).action, "confirm");
 });
 
-test("allows project writes and confirms writes elsewhere", () => {
+test("allows project and temporary-directory writes, and confirms other external writes", () => {
 	assert.deepEqual(assessFileMutation(cwd, "src/index.ts", home), { action: "allow" });
+	assert.deepEqual(assessFileMutation(cwd, "/tmp/handoff.json", home), { action: "allow" });
+	assert.deepEqual(assessFileMutation(cwd, "/tmp/handoff.json", home, "/private/tmp/handoff.json"), {
+		action: "allow",
+	});
 	assert.equal(assessFileMutation(cwd, "../other/file.ts", home).action, "confirm");
 });
 

@@ -48,6 +48,11 @@ function canonicalizeTarget(cwd: string, filePath: string, home: string): string
 	return resolve(canonicalParent, ...missing);
 }
 
+function temporaryMutationRoots(): string[] {
+	// On macOS, /tmp normally resolves to /private/tmp.
+	return ["/tmp", "/private/tmp"].map((path) => resolve(path));
+}
+
 function protectedMutationRoots(home: string): string[] {
 	return [
 		"/System",
@@ -84,6 +89,10 @@ export function assessFileMutation(
 			action: "block",
 			reason: `macOS-sensitive path is protected: ${protectedRoot}`,
 		};
+	}
+
+	if (temporaryMutationRoots().some((root) => isInside(root, target))) {
+		return ALLOW;
 	}
 
 	if (!isInside(resolve(cwd), target)) {
