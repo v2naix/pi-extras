@@ -2,16 +2,26 @@
 // 32dfe122cb6d444e91c68b32597274a725d81fa3, with context usage visualization
 // adapted from ttttmr/pi-context v2.1.0. See session-digest.LICENSE.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder, type Theme } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem, Component, KeybindingsManager } from "@earendil-works/pi-tui";
-import { Box, Container, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { Box, Container, Key, matchesKey, Spacer, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const MAX_ENTRIES = 500;
 const MAX_CONTENT_CHARS = 32_000;
 const MAX_TOOL_ARGUMENT_CHARS = 2_000;
-const PAGE_SIZE = 5;
-const DETAIL_LINES = 10;
+const PAGE_SIZE = 10;
+const DETAIL_LINES = 14;
 const REDACTED = "[REDACTED]";
+const OVERLAY_ACCENT_FG = "\x1b[38;2;138;181;249m";
+const OVERLAY_ACCENT_BG = "\x1b[48;2;138;181;249m";
+
+function overlayAccent(text: string): string {
+	return `${OVERLAY_ACCENT_FG}${text}\x1b[39m`;
+}
+
+function overlayAccentBackground(text: string): string {
+	return `${OVERLAY_ACCENT_BG}\x1b[38;2;24;24;37m${text}\x1b[39m\x1b[49m`;
+}
 
 type HistoryItemType = "user" | "assistant" | "tool";
 type DigestFilter = "all" | "ai" | "tool" | "user";
@@ -194,15 +204,63 @@ function viewForShortcut(data: string): DigestView | undefined {
 	}
 }
 
-function renderViewShortcuts(theme: Theme, width: number): string[] {
-	const text =
-		` Switch  ${theme.fg("accent", theme.bold("A"))} AI  ` +
-		`${theme.fg("text", theme.bold("U"))} User  ` +
-		`${theme.fg("success", theme.bold("T"))} Tool  ` +
-		`${theme.fg("accent", theme.bold("C"))} Context  ` +
-		`${theme.fg("text", theme.bold("D"))} All  ` +
-		`${theme.fg("muted", "• Esc Close")}`;
-	return new Text(truncateToWidth(text, width), 0, 0).render(width);
+const DIGEST_VIEWS: DigestView[] = ["all", "ai", "tool", "user", "context"];
+
+function adjacentView(current: DigestView, direction: 1 | -1): DigestView {
+	const index = DIGEST_VIEWS.indexOf(current);
+	return DIGEST_VIEWS[(index + direction + DIGEST_VIEWS.length) % DIGEST_VIEWS.length];
+}
+
+function renderDigestHeader(theme: Theme, activeView: DigestView, width: number): string[] {
+	const tabs: Array<{ view: DigestView; label: string }> = [
+		{ view: "all", label: "all" },
+		{ view: "ai", label: "ai" },
+		{ view: "tool", label: "tool" },
+		{ view: "user", label: "user" },
+		{ view: "context", label: "context" },
+	];
+	const tabLine = tabs.map(({ view, label }) => {
+		const text = ` ${label} `;
+		return view === activeView
+			? overlayAccentBackground(theme.bold(text))
+			: theme.fg("muted", text);
+	}).join("   ");
+	return [
+		...new Text(theme.fg("text", theme.bold("session digest")), 1, 0).render(width),
+		...new Text(tabLine, 1, 0).render(width),
+		theme.fg("borderMuted", "─".repeat(Math.max(1, width))),
+	];
+}
+
+function renderFooter(
+	theme: Theme,
+	hints: Array<[string, string]>,
+	actions: Array<[string, string]>,
+	width: number,
+): string[] {
+	const left = hints.map(([key, label]) => `${theme.fg("dim", key)} ${theme.fg("muted", label)}`).join("    ");
+	const right = actions.map(([key, label]) =>
+		theme.bg("selectedBg", theme.fg("text", theme.bold(` ${key} ${label} `)))
+	).join("  ");
+	const available = Math.max(1, width - 2);
+	const gap = Math.max(2, available - visibleWidth(left) - visibleWidth(right));
+	const line = ` ${left}${" ".repeat(gap)}${right} `;
+	return new Text(truncateToWidth(line, width, ""), 0, 0).render(width);
+}
+
+function frameOverlay(theme: Theme, content: string[], width: number): string[] {
+	const innerWidth = Math.max(1, width - 2);
+	const horizontal = "─".repeat(innerWidth);
+	const row = (line: string): string => {
+		const clipped = truncateToWidth(line, innerWidth, "");
+		const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(clipped)));
+		return overlayAccent("│") + clipped + padding + overlayAccent("│");
+	};
+	return [
+		overlayAccent(`┌${horizontal}┐`),
+		...content.map(row),
+		overlayAccent(`└${horizontal}┘`),
+	];
 }
 
 function formatTokens(value: number): string {
@@ -324,6 +382,10 @@ class ContextUsageUI implements Component {
 		const nextView = viewForShortcut(data);
 		if (nextView) {
 			this.onDone(nextView);
+		} else if (matchesKey(data, Key.tab)) {
+			this.onDone(adjacentView("context", 1));
+		} else if (matchesKey(data, Key.shift("tab"))) {
+			this.onDone(adjacentView("context", -1));
 		} else if (this.keybindings.matches(data, "tui.select.cancel")) {
 			this.onDone();
 		}
@@ -333,8 +395,9 @@ class ContextUsageUI implements Component {
 		const { total, limit, percent, categories } = this.breakdown;
 		const theme = this.theme;
 		const container = new Container();
-		container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-		container.addChild(new Text(theme.fg("accent", theme.bold(" Context Usage")), 1, 0));
+		container.addChild({ render: (renderWidth) => renderDigestHeader(theme, "context", renderWidth), invalidate: () => {} });
+		container.addChild(new Spacer(1));
+		container.addChild(new Text(theme.fg("accent", theme.bold("Context usage")), 1, 0));
 		container.addChild(new Spacer(1));
 
 		const gridWidth = 10;
@@ -378,9 +441,11 @@ class ContextUsageUI implements Component {
 			container.addChild(new Text(truncateToWidth(`    ${left}      ${right}`, Math.max(1, width - 2)), 1, 0));
 		}
 		container.addChild(new Spacer(1));
-		container.addChild({ render: (renderWidth) => renderViewShortcuts(theme, renderWidth), invalidate: () => {} });
-		container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-		return container.render(width);
+		container.addChild({
+			render: (renderWidth) => renderFooter(theme, [["tab", "view"], ["A/U/T/D", "jump"]], [["esc", "close"]], renderWidth),
+			invalidate: () => {},
+		});
+		return frameOverlay(theme, container.render(Math.max(1, width - 2)), width);
 	}
 
 	invalidate(): void {}
@@ -445,7 +510,9 @@ class ClippedText implements Component {
 		this.lineCount = lines.length;
 		const maxOffset = Math.max(0, lines.length - this.maxLines);
 		const offset = Math.min(this.getOffset(), maxOffset);
-		return lines.slice(offset, offset + this.maxLines);
+		const visible = lines.slice(offset, offset + this.maxLines);
+		while (visible.length < this.maxLines) visible.push("");
+		return visible;
 	}
 
 	invalidate(): void {}
@@ -475,31 +542,60 @@ class SessionDigestUI implements Component {
 			this.onDone(nextView);
 			return;
 		}
+		if (matchesKey(data, Key.tab)) {
+			this.onDone(adjacentView(this.filter, 1));
+			return;
+		}
+		if (matchesKey(data, Key.shift("tab"))) {
+			this.onDone(adjacentView(this.filter, -1));
+			return;
+		}
 		if (this.keybindings.matches(data, "tui.select.cancel")) {
-			this.onDone();
+			if (this.expanded) {
+				this.expanded = false;
+				this.detailOffset = 0;
+				this.requestRender();
+			} else {
+				this.onDone();
+			}
 			return;
 		}
 
-		if (this.keybindings.matches(data, "tui.select.up")) {
+		if (this.expanded) {
+			const maxOffset = Math.max(0, this.detailLineCount - DETAIL_LINES);
+			if (this.keybindings.matches(data, "tui.select.confirm")) {
+				this.expanded = false;
+				this.detailOffset = 0;
+			} else if (this.keybindings.matches(data, "tui.select.up")) {
+				this.detailOffset = Math.max(0, this.detailOffset - 1);
+			} else if (this.keybindings.matches(data, "tui.select.down")) {
+				this.detailOffset = Math.min(maxOffset, this.detailOffset + 1);
+			} else if (this.keybindings.matches(data, "tui.select.pageUp")) {
+				this.detailOffset = Math.max(0, this.detailOffset - DETAIL_LINES);
+			} else if (this.keybindings.matches(data, "tui.select.pageDown")) {
+				this.detailOffset = Math.min(maxOffset, this.detailOffset + DETAIL_LINES);
+			} else if (matchesKey(data, Key.home)) {
+				this.detailOffset = 0;
+			} else if (matchesKey(data, Key.end)) {
+				this.detailOffset = maxOffset;
+			} else {
+				return;
+			}
+		} else if (this.keybindings.matches(data, "tui.select.up")) {
 			this.moveSelection(-1);
 		} else if (this.keybindings.matches(data, "tui.select.down")) {
 			this.moveSelection(1);
 		} else if (this.keybindings.matches(data, "tui.select.confirm")) {
-			this.expanded = !this.expanded;
+			this.expanded = true;
 			this.detailOffset = 0;
 		} else if (this.keybindings.matches(data, "tui.select.pageUp")) {
-			if (this.expanded) {
-				this.detailOffset = Math.max(0, this.detailOffset - DETAIL_LINES);
-			} else {
-				this.moveSelection(-PAGE_SIZE);
-			}
+			this.moveSelection(-PAGE_SIZE);
 		} else if (this.keybindings.matches(data, "tui.select.pageDown")) {
-			if (this.expanded) {
-				const maxOffset = Math.max(0, this.detailLineCount - DETAIL_LINES);
-				this.detailOffset = Math.min(maxOffset, this.detailOffset + DETAIL_LINES);
-			} else {
-				this.moveSelection(PAGE_SIZE);
-			}
+			this.moveSelection(PAGE_SIZE);
+		} else if (matchesKey(data, Key.home)) {
+			this.moveSelection(-this.items.length);
+		} else if (matchesKey(data, Key.end)) {
+			this.moveSelection(this.items.length);
 		} else {
 			return;
 		}
@@ -521,12 +617,13 @@ class SessionDigestUI implements Component {
 		const pageCount = Math.max(1, Math.ceil(this.items.length / PAGE_SIZE));
 		const currentPage = Math.floor(pageStart / PAGE_SIZE) + 1;
 
-		container.addChild(new DynamicBorder((text: string) => theme.fg("borderAccent", text)));
+		container.addChild({ render: (renderWidth) => renderDigestHeader(theme, this.filter, renderWidth), invalidate: () => {} });
+		container.addChild(new Spacer(1));
 		container.addChild(
 			new Text(
-				`${theme.fg("accent", theme.bold(" SESSION DIGEST"))} ${theme.fg("muted", "|")} ` +
-					`${theme.fg("text", `Filter: ${FILTER_LABELS[this.filter]}`)} ${theme.fg("muted", "|")} ` +
-					`${theme.fg("accent", String(this.items.length))} entries ${theme.fg("muted", `| page ${currentPage}/${pageCount}`)}`,
+				`${theme.fg("text", theme.bold(FILTER_LABELS[this.filter]))}  ` +
+					`${theme.fg("accent", String(this.items.length))} ${theme.fg("muted", "entries")}  ` +
+					theme.fg("dim", `page ${currentPage} / ${pageCount}`),
 				1,
 				0,
 			),
@@ -540,68 +637,64 @@ class SessionDigestUI implements Component {
 			const absoluteIndex = pageStart + pageIndex;
 			const selected = absoluteIndex === this.selectedIndex;
 			const color = item.type === "user" ? "text" : item.type === "assistant" ? "accent" : "success";
-			const elapsed = item.elapsed ? theme.fg("dim", ` (+${item.elapsed})`) : "";
-			const timestamp = `[${formatTime(item.timestamp)}]`;
-			let title: string;
-			if (item.type === "tool") {
-				title = `${theme.fg(color, theme.bold("[TOOL]"))} ${theme.fg("text", theme.bold(item.title))} ${theme.fg("muted", timestamp)}${elapsed}`;
-			} else if (this.filter === "all") {
-				const badge = item.type === "user" ? "[user]" : "[ai]";
-				title = `${theme.fg(color, theme.bold(badge))} ${theme.fg("muted", timestamp)}${elapsed}`;
-			} else {
-				const elapsedLabel = item.elapsed ?? "0s";
-				const rowWidth = Math.max(1, width - 4);
-				const separatorWidth = rowWidth - elapsedLabel.length - 1;
-				title = separatorWidth > 0
-					? `${theme.fg("borderMuted", "╌".repeat(separatorWidth))} ${theme.fg(color, theme.bold(elapsedLabel))}`
-					: theme.fg(color, theme.bold(elapsedLabel));
-			}
+			const badge = item.type === "user" ? "user" : item.type === "assistant" ? "ai" : "tool";
+			const cursor = selected ? theme.fg("accent", "▸") : " ";
+			const label = theme.fg(color, theme.bold(badge.padEnd(4)));
+			const timestamp = theme.fg("dim", formatTime(item.timestamp));
+			const toolName = item.type === "tool" ? `${theme.fg("text", item.title.replace(/^Tool: /, ""))}  ` : "";
+			const elapsed = item.elapsed ? `${theme.fg("dim", `+${item.elapsed}`)}  ` : "";
 			const preview = item.content.replace(/\s+/g, " ").trim();
-			const box = new Box(1, 0, selected ? (text) => theme.bg("selectedBg", text) : undefined);
-			box.addChild(new Text(truncateToWidth(title, Math.max(1, width - 4)), 0, 0));
-			box.addChild(
-				new Text(
-					theme.fg("text", truncateToWidth(`  ${preview}`, Math.max(1, width - 4), "…")),
-					0,
-					0,
-				),
+			const metadata = `${cursor}  ${label}  ${timestamp}  ${elapsed}${toolName}`;
+			const rowWidth = Math.max(1, width - 4);
+			const previewWidth = Math.max(1, rowWidth - visibleWidth(metadata));
+			const previewText = theme.fg(
+				selected ? "text" : "muted",
+				truncateToWidth(preview, previewWidth, "…"),
 			);
+			const box = new Box(1, 0, selected ? (text) => theme.bg("selectedBg", text) : undefined);
+			box.addChild(new Text(truncateToWidth(`${metadata}${previewText}`, rowWidth, ""), 0, 0));
 			container.addChild(box);
 		});
 
 		if (this.expanded) {
 			const selected = this.items[this.selectedIndex];
-			container.addChild(new Spacer(1));
-			let detailTitle: string;
-			if (selected.type === "tool") {
-				detailTitle = selected.title;
-			} else if (this.filter === "all") {
-				detailTitle = `${selected.type === "user" ? "[user]" : "[ai]"} [${formatTime(selected.timestamp)}]`;
-			} else {
-				detailTitle = selected.elapsed ?? "0s";
-			}
-			container.addChild(new Text(theme.fg("accent", theme.bold(` ${detailTitle} — details`)), 0, 0));
+			const detail = new Container();
+			detail.addChild({ render: (renderWidth) => renderDigestHeader(theme, this.filter, renderWidth), invalidate: () => {} });
+			detail.addChild(new Spacer(1));
+			const typeLabel = selected.type === "assistant" ? "AI" : selected.type === "user" ? "User" : selected.title;
+			detail.addChild(new Text(theme.fg("accent", theme.bold(` ${typeLabel}`)), 1, 0));
+			detail.addChild(new Text(theme.fg("muted", ` ${formatTime(selected.timestamp)}${selected.elapsed ? `  •  +${selected.elapsed}` : ""}`), 1, 0));
+			detail.addChild(new Spacer(1));
 			const clipped = new ClippedText(selected.content, () => this.detailOffset, DETAIL_LINES);
-			container.addChild(clipped);
-			const lines = container.render(width);
+			detail.addChild(clipped);
+			detail.addChild(new Spacer(1));
+			const lines = detail.render(Math.max(1, width - 2));
 			this.detailLineCount = clipped.lineCount;
-			return [
+			const start = Math.min(this.detailOffset + 1, Math.max(1, this.detailLineCount));
+			const end = Math.min(this.detailOffset + DETAIL_LINES, this.detailLineCount);
+			return frameOverlay(theme, [
 				...lines,
-				...new Text(
-					theme.fg("muted", ` PgUp/PgDn Scroll details (${Math.min(this.detailOffset + 1, Math.max(1, this.detailLineCount))}-${Math.min(this.detailOffset + DETAIL_LINES, this.detailLineCount)}/${this.detailLineCount})`),
-					0,
-					0,
-				).render(width),
-				...renderViewShortcuts(theme, width),
-				...new DynamicBorder((text: string) => theme.fg("borderAccent", text)).render(width),
-			];
+				...new Text(theme.fg("dim", ` ${start}–${end} of ${this.detailLineCount} lines`), 1, 0).render(Math.max(1, width - 2)),
+				...renderFooter(
+					theme,
+					[["↑↓", "scroll"], ["PgUp/Dn", "page"], ["home/end", "jump"]],
+					[["enter/esc", "back"]],
+					Math.max(1, width - 2),
+				),
+			], width);
 		}
 
 		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("muted", " ↑/↓ Navigate • PgUp/PgDn Page • Enter Details"), 0, 0));
-		container.addChild({ render: (renderWidth) => renderViewShortcuts(theme, renderWidth), invalidate: () => {} });
-		container.addChild(new DynamicBorder((text: string) => theme.fg("borderAccent", text)));
-		return container.render(width);
+		container.addChild({
+			render: (renderWidth) => renderFooter(
+				theme,
+				[["↑↓", "select"], ["PgUp/Dn", "page"], ["tab", "view"]],
+				[["↵", "details"], ["esc", "close"]],
+				renderWidth,
+			),
+			invalidate: () => {},
+		});
+		return frameOverlay(theme, container.render(Math.max(1, width - 2)), width);
 	}
 
 	invalidate(): void {}
@@ -661,7 +754,16 @@ export default function (pi: ExtensionAPI): void {
 					currentView = await ctx.ui.custom<DigestView | undefined>(
 						(_tui, theme, keybindings, done) =>
 							new ContextUsageUI(breakdown, (nextView) => done(nextView), theme, keybindings),
-						{ overlay: true },
+						{
+							overlay: true,
+							overlayOptions: {
+								width: "92%",
+								minWidth: 72,
+								maxHeight: "94%",
+								anchor: "center",
+								margin: 1,
+							},
+						},
 					);
 					continue;
 				}
@@ -687,9 +789,11 @@ export default function (pi: ExtensionAPI): void {
 					{
 						overlay: true,
 						overlayOptions: {
-							width: "80%",
-							maxHeight: "90%",
+							width: "92%",
+							minWidth: 72,
+							maxHeight: "94%",
 							anchor: "center",
+							margin: 1,
 						},
 					},
 				);
