@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { installHerdrAnswerStudio } from "../extensions/herdr-answer-studio/core.ts";
 
-function assistantQuestion() {
+function assistantQuestion(text = "Which stack should I use?") {
   return {
     type: "message",
     id: "assistant-1",
     message: {
       role: "assistant",
       stopReason: "stop",
-      content: [{ type: "text", text: "Which stack should I use?" }],
+      content: [{ type: "text", text }],
     },
   };
 }
@@ -44,7 +44,144 @@ const ctx = {
   ui: { notify() {} },
 };
 
-test("automatic invocation calls the captured handler without messaging the model", async () => {
+const multipleQuestionCtx = {
+  ...ctx,
+  sessionManager: {
+    getBranch: () => [
+      assistantQuestion(
+        "Please answer:\n1. Which database should I use?\n2. Which runtime should I target?",
+      ),
+    ],
+  },
+};
+
+test("ignores question-like text inside fenced code blocks", async () => {
+  const harness = createHarness();
+  let answerInvocations = 0;
+  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+    pi.registerCommand("answer", {
+      async handler() {
+        answerInvocations += 1;
+      },
+    });
+  });
+
+  const codeBlockCtx = {
+    ...ctx,
+    sessionManager: {
+      getBranch: () => [
+        {
+          ...assistantQuestion(),
+          message: {
+            ...assistantQuestion().message,
+            content: [
+              {
+                type: "text",
+                text: "复制以下提示词：\n```markdown\n1. 哪些内容属于本次规范\n2. 哪些内容应明确列入 Out of scope\n```",
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  const agentSettled = harness.handlers.get("agent_settled");
+  assert.ok(agentSettled);
+  await agentSettled({}, codeBlockCtx);
+
+  assert.equal(answerInvocations, 0);
+  assert.deepEqual(harness.blockedEvents, []);
+});
+
+test("ignores question marks inside tilde-fenced code blocks", async () => {
+  const harness = createHarness();
+  let answerInvocations = 0;
+  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+    pi.registerCommand("answer", {
+      async handler() {
+        answerInvocations += 1;
+      },
+    });
+  });
+
+  const codeBlockCtx = {
+    ...ctx,
+    sessionManager: {
+      getBranch: () => [
+        {
+          ...assistantQuestion(),
+          message: {
+            ...assistantQuestion().message,
+            content: [
+              {
+                type: "text",
+                text: "Example:\n~~~text\nWould you enable this?\nWhich mode should I use?\n~~~",
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  const agentSettled = harness.handlers.get("agent_settled");
+  assert.ok(agentSettled);
+  await agentSettled({}, codeBlockCtx);
+
+  assert.equal(answerInvocations, 0);
+  assert.deepEqual(harness.blockedEvents, []);
+});
+
+test("does not invoke extraction for a single question", async () => {
+  const harness = createHarness();
+  let answerInvocations = 0;
+  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+    pi.registerCommand("answer", {
+      async handler() {
+        answerInvocations += 1;
+      },
+    });
+  });
+
+  const agentSettled = harness.handlers.get("agent_settled");
+  assert.ok(agentSettled);
+  await agentSettled({}, ctx);
+
+  assert.equal(answerInvocations, 0);
+  assert.deepEqual(harness.blockedEvents, []);
+});
+
+test("does not treat numbered options as multiple questions", async () => {
+  const harness = createHarness();
+  let answerInvocations = 0;
+  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+    pi.registerCommand("answer", {
+      async handler() {
+        answerInvocations += 1;
+      },
+    });
+  });
+
+  const optionsCtx = {
+    ...ctx,
+    sessionManager: {
+      getBranch: () => [
+        assistantQuestion(
+          "Which database should I use?\n1. PostgreSQL\n2. MySQL",
+        ),
+      ],
+    },
+  };
+  const agentSettled = harness.handlers.get("agent_settled");
+  assert.ok(agentSettled);
+  await agentSettled({}, optionsCtx);
+
+  assert.equal(answerInvocations, 0);
+  assert.deepEqual(harness.blockedEvents, []);
+});
+
+test("automatically extracts a numbered questionnaire without messaging the model", async () => {
   const harness = createHarness();
   let answerInvocations = 0;
   await installHerdrAnswerStudio(harness.pi as any, (pi) => {
@@ -58,7 +195,7 @@ test("automatic invocation calls the captured handler without messaging the mode
 
   const agentSettled = harness.handlers.get("agent_settled");
   assert.ok(agentSettled);
-  await agentSettled({}, ctx);
+  await agentSettled({}, multipleQuestionCtx);
 
   assert.equal(answerInvocations, 1);
   assert.deepEqual(harness.sentUserMessages, []);
@@ -68,7 +205,7 @@ test("automatic invocation calls the captured handler without messaging the mode
   ]);
 });
 
-test("keeps Herdr blocked for a single question until the user answers", async () => {
+test("keeps Herdr blocked when extraction yields a single question", async () => {
   const harness = createHarness();
   await installHerdrAnswerStudio(harness.pi as any, (pi, bridge) => {
     pi.registerCommand("answer", {
@@ -80,7 +217,7 @@ test("keeps Herdr blocked for a single question until the user answers", async (
 
   const agentSettled = harness.handlers.get("agent_settled");
   assert.ok(agentSettled);
-  await agentSettled({}, ctx);
+  await agentSettled({}, multipleQuestionCtx);
 
   assert.deepEqual(harness.blockedEvents, [
     { active: true, label: "Waiting for Answer Studio response" },
@@ -88,7 +225,7 @@ test("keeps Herdr blocked for a single question until the user answers", async (
 
   const agentStart = harness.handlers.get("agent_start");
   assert.ok(agentStart);
-  await agentStart({}, ctx);
+  await agentStart({}, multipleQuestionCtx);
   assert.deepEqual(harness.blockedEvents, [
     { active: true, label: "Waiting for Answer Studio response" },
     { active: false },

@@ -23,21 +23,59 @@ export type AnswerStudioFactory = (
   bridge: AnswerStudioBridge,
 ) => void | Promise<void>;
 
-/**
- * Keep this deliberately conservative: Answer Studio performs the authoritative
- * extraction after the bridge sees a likely question.
- */
-export function likelyAsksForInput(text: string): boolean {
-  if (/[?？]/u.test(text)) return true;
+function withoutFencedCodeBlocks(text: string): string {
+  let fence: { marker: "`" | "~"; length: number } | undefined;
 
-  return text.split("\n").some((line) => {
-    const trimmed = line
-      .trim()
-      .replace(/^(?:[-*+] |\d+[.)]\s*|#{1,6}\s*)/u, "");
-    return /^(?:请(?:选择|确认|告诉|提供|回答)|你(?:希望|想要|是否|能否)|您(?:希望|是否|能否)|是否|要不要|哪(?:个|些|种|一)|what\b|which\b|would you|do you|should (?:i|we)|can you|could you|please (?:choose|confirm|provide|tell|select))/iu.test(
-      trimmed,
+  return text
+    .split("\n")
+    .filter((line) => {
+      if (fence) {
+        const closing = line.match(/^ {0,3}(`+|~+)\s*$/u)?.[1];
+        if (
+          closing?.[0] === fence.marker &&
+          closing.length >= fence.length
+        ) {
+          fence = undefined;
+        }
+        return false;
+      }
+
+      const opening = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+      if (opening) {
+        fence = {
+          marker: opening[0] as "`" | "~",
+          length: opening.length,
+        };
+        return false;
+      }
+      return true;
+    })
+    .join("\n");
+}
+
+const QUESTION_START = /^(?:请(?:选择|确认|告诉|提供|回答)|你(?:希望|想要|是否|能否)|您(?:希望|是否|能否)|是否|要不要|哪(?:个|些|种|一)|what\b|which\b|would you|do you|should (?:i|we)|can you|could you|please (?:choose|confirm|provide|tell|select))/iu;
+
+/**
+ * Avoid an extraction-model call unless the response structurally resembles a
+ * questionnaire. Answer Studio performs the authoritative extraction afterward.
+ */
+export function likelyAsksForMultipleInputs(text: string): boolean {
+  const prose = withoutFencedCodeBlocks(text);
+  const questionMarkCount = prose.match(/[?？]/gu)?.length ?? 0;
+  if (questionMarkCount >= 2) return true;
+
+  let questionLineCount = 0;
+  for (const line of prose.split("\n")) {
+    const content = line.trim().replace(
+      /^(?:[-*+] |\d+[.)]\s*|#{1,6}\s*)/u,
+      "",
     );
-  });
+    if (QUESTION_START.test(content)) {
+      questionLineCount += 1;
+    }
+  }
+
+  return questionLineCount >= 2;
 }
 
 function latestCompletedAssistant(ctx: ExtensionContext):
@@ -155,7 +193,7 @@ export async function installHerdrAnswerStudio(
     if (
       !assistant ||
       assistant.id === processedAssistantId ||
-      !likelyAsksForInput(assistant.text)
+      !likelyAsksForMultipleInputs(assistant.text)
     ) {
       return;
     }
