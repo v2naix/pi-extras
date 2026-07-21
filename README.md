@@ -29,8 +29,18 @@ pi install git:github.com/v2naix/pi-extras
 | [`pi-extras`](skills/pi-extras/SKILL.md) | 维护本仓库的 Pi 资源：将 Agent 生成或从其他来源取得的 skills 与 extensions 收录到正确的开发仓库，并负责新增、审查、修改、替换和清理移除。 | 相关维护请求可按需加载，也可显式调用 `/skill:pi-extras`；需要 Git 及 `v2naix/pi-extras` 的可写开发检出。 |
 | [`pi-resource-audit`](skills/pi-resource-audit/SKILL.md) | 对 Pi extensions、skills 和 packages 进行静态、证据驱动的审核，覆盖安全、隐私、正确性、质量、供应链和 Pi API 合规性；默认快速筛查，发现高风险信号或明确要求时再完整审计。 | 安装前风险评估或本地资源审核时按需加载，也可显式调用 `/skill:pi-resource-audit`；默认不执行受审代码。 |
 | [`dotfiles-workflow`](skills/dotfiles-workflow/SKILL.md) | 指导 Agent 通过 `scripts/dotfiles` 统一接口安全维护 macOS Dotfiles，理解目标漂移、管理清单、独立配置源、秘密、Karabiner/Goku、Yabai 和 GUI 控制面的边界。 | 在对应 Dotfiles 源内处理检查、审阅、编辑、应用、更新、诊断或漂移时按需加载，也可显式调用 `/skill:dotfiles-workflow`。 |
+| [`htmlify`](skills/htmlify/SKILL.md) | 将 Agent 回答、仓库证据、计划、评审和报告制作成自包含的浏览器 HTML，包括 operator brief、实施图、决策简报、事故报告、解释器和轻量交互原型。 | 相关 HTML artifact 请求可按需加载，也可显式调用 `/skill:htmlify`；验证器需要 Node.js 20+，首次通过 `npx` 使用时可能联网下载。 |
+| [`deckify`](skills/deckify/SKILL.md) | 将密集内容制作成自包含 HTML 演示文稿和可打印指南，支持演讲者备注、run-of-show、演示计划、截图和视觉覆盖规划。 | 演示文稿、workshop 或教学指南请求可按需加载，也可显式调用 `/skill:deckify`；验证器需要 Node.js 20+，首次通过 `npx` 使用时可能联网下载。 |
 | [`dayone-new`](skills/dayone-new/SKILL.md) | 通过 Day One 官方 `dayone` CLI 新建本地日记，支持日记本、标签、日期、时区、全天、星标、坐标和附件。正文只通过标准输入传递，并将创建操作视为不可幂等。 | 仅显式调用 `/skill:dayone-new`；需要 macOS、Day One 及官方 CLI。 |
 | [`dayone-reader`](skills/dayone-reader/SKILL.md) | 通过独立的 [`v2naix/dayone-reader`](https://github.com/v2naix/dayone-reader) CLI 检索和读取本地 Day One 数据，支持日记本、标签、最近条目、关键词搜索、历年今日和单篇读取；不会修改或删除日记。 | 仅显式调用 `/skill:dayone-reader`；需要 macOS、Day One、Python 3.11+ 及 reader CLI。 |
+
+### htmlify 与 deckify
+
+`htmlify` 和 `deckify` 原样收录自 [`@zakelfassi/htmlify`](https://github.com/zakelfassi/htmlify) 1.0.0（npm tarball integrity：`sha512-p67kkTzy1jYXvTAnLBUYTUpL/fprjPwQXEKwU7O4/lQ8XKWmEWeS9uYsJwRpkX4f8wFoJ+YXfXwgsNzMyJho5w==`），采用 Apache-2.0 License；许可证分别保留在 [`skills/htmlify/LICENSE`](skills/htmlify/LICENSE) 和 [`skills/deckify/LICENSE`](skills/deckify/LICENSE)。收录范围仅包含两个可独立维护的 skill 目录及其 references，不包含上游 Pi extension、Claude Code hook、CLI 实现或 assets。
+
+两个 skill 默认生成自包含 HTML，不读取凭据，也不自行执行网络请求。它们会指导 Agent 按需读取仓库、文档、Git、CI、日志、截图等证据并把 artifact 写入当前工作区；具体读取范围和输出路径仍由当前请求决定。验证步骤使用 `npx -y @zakelfassi/htmlify`，需要 Node.js 20+，本机未缓存对应 npm 包时会访问 npm registry 并执行下载的 CLI；无法运行时允许手工验证并明确报告。图片生成、浏览器截图以及外部资料读取只在任务需要且当前环境提供相应工具时进行，不是 skill 自带依赖。
+
+不要同时启用本仓库与独立 `npm:@zakelfassi/htmlify` package 中的同名 skills，否则 Pi 会报告 `htmlify` / `deckify` 名称冲突并只保留先发现的副本。需要保留上游 `/htmlify` extension 时，可只禁用该 npm package 的两个 skills。
 
 ### Day One 配置
 
