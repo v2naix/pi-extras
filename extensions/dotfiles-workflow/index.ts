@@ -134,6 +134,8 @@ export default function dotfilesWorkflow(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				[
 					root ? `Dotfiles 源：${root}` : "Dotfiles 源：当前目录未识别",
+					"检查 → 编辑源 → 审阅 → 应用 → 功能验证 → 提交 → 推送 → 检查 CI",
+					"",
 					"/df-check   本地只读检查",
 					"/df-status  本地检查 + fetch 远端状态",
 					"/df-review  diff、dry-run 与安全扫描",
