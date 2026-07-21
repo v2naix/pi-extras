@@ -1,6 +1,7 @@
 ---
 name: deckify
 description: Create self-contained HTML presentation decks and companion downloadable guides for content creators, educators, technical talks, YouTube lives, workshops, explainers, launch narratives, and media-rich essays. Use when the user wants a presentable deck, speaker notes, run-of-show, demo plan, PDF/guide output, image-generation plan, or screenshot-backed visual narrative rather than a flat markdown answer.
+disable-model-invocation: true
 compatibility: Works in agentskills.io-compatible clients. Part of the htmlify skill family; specialized for media-rich deck/guide production.
 license: Apache-2.0
 metadata:

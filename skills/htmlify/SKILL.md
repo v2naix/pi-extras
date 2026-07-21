@@ -1,6 +1,7 @@
 ---
 name: htmlify
 description: Create self-contained HTML artifacts from agent or repo context, including operator briefs, build plans, implementation maps, PR/release packets, incident timelines, decision briefs, reports, explainers, diagrams, prototypes, and lightweight editors. Use when the user asks to turn dense text, code evidence, plans, reviews, or status into browser-ready HTML instead of a markdown wall.
+disable-model-invocation: true
 compatibility: Works in agentskills.io-compatible clients. Optional Pi/OMP extension runtime is in index.js and requires Node 20+.
 license: Apache-2.0
 metadata:
