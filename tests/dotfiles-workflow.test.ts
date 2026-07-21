@@ -8,7 +8,7 @@ import dotfilesWorkflow, {
 	findDotfilesRoot,
 	formatWorkflowOutput,
 	protectedDotfilesPath,
-} from "../extensions/dotfiles-workflow.ts";
+} from "../extensions/dotfiles-workflow/index.ts";
 
 function makeDotfilesSource(): string {
 	const root = mkdtempSync(join(tmpdir(), "pi-dotfiles-workflow-"));

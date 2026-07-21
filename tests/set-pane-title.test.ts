@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { generateAutoTitle } from "../extensions/set-pane-title.ts";
+import { generateAutoTitle } from "../extensions/set-pane-title/index.ts";
 
 function createContext() {
   return {

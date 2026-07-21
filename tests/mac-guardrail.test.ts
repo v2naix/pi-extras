@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import macGuardrail, {
 	assessBashCommand,
 	assessFileMutation,
-} from "../extensions/mac-guardrail.ts";
+} from "../extensions/mac-guardrail/index.ts";
 
 const cwd = "/Users/alice/src/app";
 const home = "/Users/alice";
