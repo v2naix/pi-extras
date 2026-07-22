@@ -6,7 +6,8 @@ import type {
 
 const ANSWER_COMMAND = "answer";
 const HERDR_BLOCKED_EVENT = "herdr:blocked";
-const BLOCKED_LABEL = "Waiting for Answer Studio response";
+const ANSWER_STUDIO_BLOCKED_LABEL = "Waiting for Answer Studio response";
+const USER_RESPONSE_BLOCKED_LABEL = "Waiting for user response";
 
 type CommandOptions = {
   description?: string;
@@ -53,29 +54,34 @@ function withoutFencedCodeBlocks(text: string): string {
     .join("\n");
 }
 
-const QUESTION_START = /^(?:请(?:选择|确认|告诉|提供|回答)|你(?:希望|想要|是否|能否)|您(?:希望|是否|能否)|是否|要不要|哪(?:个|些|种|一)|what\b|which\b|would you|do you|should (?:i|we)|can you|could you|please (?:choose|confirm|provide|tell|select))/iu;
+type AssistantPromptShape = {
+  asksQuestion: boolean;
+  hasNumberedList: boolean;
+};
 
 /**
- * Avoid an extraction-model call unless the response structurally resembles a
- * questionnaire. Answer Studio performs the authoritative extraction afterward.
+ * Keep automatic routing deterministic: any visible question blocks Herdr,
+ * while only a question accompanied by a 1./2. style list invokes Answer Studio.
  */
-export function likelyAsksForMultipleInputs(text: string): boolean {
+export function inspectAssistantPrompt(text: string): AssistantPromptShape {
   const prose = withoutFencedCodeBlocks(text);
-  const questionMarkCount = prose.match(/[?？]/gu)?.length ?? 0;
-  if (questionMarkCount >= 2) return true;
+  let sawFirstItem = false;
+  let hasNumberedList = false;
 
-  let questionLineCount = 0;
   for (const line of prose.split("\n")) {
-    const content = line.trim().replace(
-      /^(?:[-*+] |\d+[.)]\s*|#{1,6}\s*)/u,
-      "",
-    );
-    if (QUESTION_START.test(content)) {
-      questionLineCount += 1;
+    const number = line.match(/^ {0,3}(\d+)[.)]\s+/u)?.[1];
+    if (number === "1") {
+      sawFirstItem = true;
+    } else if (sawFirstItem && number === "2") {
+      hasNumberedList = true;
+      break;
     }
   }
 
-  return questionLineCount >= 2;
+  return {
+    asksQuestion: /[?？]/u.test(prose),
+    hasNumberedList,
+  };
 }
 
 function latestCompletedAssistant(ctx: ExtensionContext):
@@ -115,16 +121,27 @@ export async function installHerdrAnswerStudio(
 ) {
   let answerHandler: CommandOptions["handler"] | undefined;
   let processedAssistantId: string | undefined;
-  let studioActive = false;
+  let blockedLabel: string | undefined;
   let keepBlockedAfterAnswer = false;
 
-  const setStudioActive = (active: boolean) => {
-    if (active === studioActive) return;
-    studioActive = active;
-    pi.events.emit(HERDR_BLOCKED_EVENT, {
-      active,
-      ...(active ? { label: BLOCKED_LABEL } : {}),
-    });
+  const setBlocked = (
+    active: boolean,
+    label = USER_RESPONSE_BLOCKED_LABEL,
+  ) => {
+    const nextLabel = active ? label : undefined;
+    if (nextLabel === blockedLabel) return;
+
+    // Herdr treats blocked events as reference-counted acquisitions/releases.
+    // Changing a label therefore has to release the old acquisition before
+    // acquiring the new one; two consecutive active:true events would leak a
+    // blocked reference after the user submits their answer.
+    if (blockedLabel !== undefined) {
+      pi.events.emit(HERDR_BLOCKED_EVENT, { active: false });
+    }
+    blockedLabel = nextLabel;
+    if (nextLabel !== undefined) {
+      pi.events.emit(HERDR_BLOCKED_EVENT, { active: true, label: nextLabel });
+    }
   };
 
   const invokeAnswer = async (
@@ -136,14 +153,17 @@ export async function installHerdrAnswerStudio(
     }
 
     keepBlockedAfterAnswer = false;
-    setStudioActive(true);
+    setBlocked(true, ANSWER_STUDIO_BLOCKED_LABEL);
     let completed = false;
     try {
       await answerHandler(args, ctx);
       completed = true;
+      if (keepBlockedAfterAnswer) {
+        setBlocked(true, USER_RESPONSE_BLOCKED_LABEL);
+      }
     } finally {
       if (!completed || !keepBlockedAfterAnswer) {
-        setStudioActive(false);
+        setBlocked(false);
       }
     }
   };
@@ -180,25 +200,35 @@ export async function installHerdrAnswerStudio(
     );
   }
 
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event, ctx) => {
     processedAssistantId = undefined;
     keepBlockedAfterAnswer = false;
-    setStudioActive(false);
+    setBlocked(false);
+
+    const assistant = latestCompletedAssistant(ctx);
+    if (!assistant) return;
+
+    processedAssistantId = assistant.id;
+    if (inspectAssistantPrompt(assistant.text).asksQuestion) {
+      setBlocked(true, USER_RESPONSE_BLOCKED_LABEL);
+    }
   });
 
   pi.on("agent_settled", async (_event, ctx) => {
     if (ctx.mode !== "tui") return;
 
     const assistant = latestCompletedAssistant(ctx);
-    if (
-      !assistant ||
-      assistant.id === processedAssistantId ||
-      !likelyAsksForMultipleInputs(assistant.text)
-    ) {
+    if (!assistant || assistant.id === processedAssistantId) return;
+
+    processedAssistantId = assistant.id;
+    const prompt = inspectAssistantPrompt(assistant.text);
+    if (!prompt.asksQuestion) return;
+
+    if (!prompt.hasNumberedList) {
+      setBlocked(true, USER_RESPONSE_BLOCKED_LABEL);
       return;
     }
 
-    processedAssistantId = assistant.id;
     // Answer Studio 0.1.2 only consumes ExtensionContext members. Capturing
     // its registered handler avoids copying the companion implementation.
     await invokeAnswer("", ctx as ExtensionCommandContext);
@@ -206,11 +236,11 @@ export async function installHerdrAnswerStudio(
 
   pi.on("agent_start", () => {
     keepBlockedAfterAnswer = false;
-    if (studioActive) setStudioActive(false);
+    setBlocked(false);
   });
 
   pi.on("session_shutdown", () => {
     keepBlockedAfterAnswer = false;
-    setStudioActive(false);
+    setBlocked(false);
   });
 }
