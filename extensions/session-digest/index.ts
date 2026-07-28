@@ -143,7 +143,7 @@ function formatElapsed(start: Date, end: Date): string | undefined {
 	return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-function extractContent(message: MessageLike): string {
+function extractContent(message: MessageLike, includeToolCalls = true): string {
 	const { content } = message;
 	if (typeof content === "string") return limitContent(content);
 	if (!Array.isArray(content)) return content == null ? "" : limitContent(safeStringify(content, MAX_CONTENT_CHARS));
@@ -155,7 +155,7 @@ function extractContent(message: MessageLike): string {
 
 		if (block.type === "text" && typeof block.text === "string") {
 			parts.push(block.text);
-		} else if (block.type === "toolCall" && typeof block.name === "string") {
+		} else if (includeToolCalls && block.type === "toolCall" && typeof block.name === "string") {
 			const args = safeStringify(block.arguments ?? {}, MAX_TOOL_ARGUMENT_CHARS);
 			parts.push(`Tool: ${sanitizeTerminalText(block.name)}(${args})`);
 		} else if (block.type === "image") {
@@ -470,7 +470,7 @@ function toDigestHistory(branch: unknown[], filter: DigestFilter): DigestHistory
 	for (const { entry, type } of recentEntries) {
 		const message = entry.message;
 		if (!message) continue;
-		const content = extractContent(message);
+		const content = extractContent(message, filter !== "ai");
 		if (!content) continue;
 		const timestamp = parseTimestamp(message.timestamp, entry.timestamp);
 
