@@ -299,6 +299,11 @@ export default function (
       return;
     }
 
+    // Extraction is complete and the Studio can now present concrete
+    // questions. Delay Herdr's blocked notification until this point so the
+    // user never arrives at a still-loading question window.
+    bridge?.onQuestionsReady();
+
     const draftStore = createDraftStore(
       pi,
       {

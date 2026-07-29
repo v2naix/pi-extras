@@ -17,6 +17,8 @@ type CommandOptions = {
 export interface AnswerStudioBridge {
   /** Keep Herdr blocked after /answer returns so the normal editor can answer. */
   onSingleQuestion: () => void;
+  /** Block Herdr only once the multi-question Studio UI is ready for input. */
+  onQuestionsReady: () => void;
 }
 
 export type AnswerStudioFactory = (
@@ -153,7 +155,6 @@ export async function installHerdrAnswerStudio(
     }
 
     keepBlockedAfterAnswer = false;
-    setBlocked(true, ANSWER_STUDIO_BLOCKED_LABEL);
     let completed = false;
     try {
       await answerHandler(args, ctx);
@@ -192,6 +193,10 @@ export async function installHerdrAnswerStudio(
   await answerStudioFactory(companionPi, {
     onSingleQuestion: () => {
       keepBlockedAfterAnswer = true;
+      setBlocked(true, USER_RESPONSE_BLOCKED_LABEL);
+    },
+    onQuestionsReady: () => {
+      setBlocked(true, ANSWER_STUDIO_BLOCKED_LABEL);
     },
   });
   if (!answerHandler) {

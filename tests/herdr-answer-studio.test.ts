@@ -215,10 +215,11 @@ test("does not extract when one decision is framed and then confirmed", async ()
 test("invokes extraction for a question followed by a numbered list", async () => {
   const harness = createHarness();
   let answerInvocations = 0;
-  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+  await installHerdrAnswerStudio(harness.pi as any, (pi, bridge) => {
     pi.registerCommand("answer", {
       async handler() {
         answerInvocations += 1;
+        bridge.onQuestionsReady();
       },
     });
   });
@@ -272,11 +273,17 @@ test("does not invoke extraction for a numbered list without a question", async 
 test("automatically extracts a numbered questionnaire without messaging the model", async () => {
   const harness = createHarness();
   let answerInvocations = 0;
-  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+  await installHerdrAnswerStudio(harness.pi as any, (pi, bridge) => {
     pi.registerCommand("answer", {
       description: "test answer command",
       async handler() {
+        assert.deepEqual(
+          harness.blockedEvents,
+          [],
+          "extraction must finish before Herdr announces the question window",
+        );
         answerInvocations += 1;
+        bridge.onQuestionsReady();
       },
     });
   });
@@ -308,8 +315,6 @@ test("keeps Herdr blocked when extraction yields a single question", async () =>
   await agentSettled({}, multipleQuestionCtx);
 
   assert.deepEqual(harness.blockedEvents, [
-    { active: true, label: "Waiting for Answer Studio response" },
-    { active: false },
     { active: true, label: "Waiting for user response" },
   ]);
   assert.equal(harness.getBlockedCount(), 1);
@@ -324,13 +329,15 @@ test("keeps Herdr blocked when extraction yields a single question", async () =>
   );
 });
 
-test("keeps /answer registered and blocked during manual invocation", async () => {
+test("keeps /answer registered and blocks once its questions are ready", async () => {
   const harness = createHarness();
   let answerInvocations = 0;
-  await installHerdrAnswerStudio(harness.pi as any, (pi) => {
+  await installHerdrAnswerStudio(harness.pi as any, (pi, bridge) => {
     pi.registerCommand("answer", {
       async handler() {
+        assert.deepEqual(harness.blockedEvents, []);
         answerInvocations += 1;
+        bridge.onQuestionsReady();
       },
     });
   });
@@ -359,7 +366,7 @@ test("clears blocked state when Answer Studio fails", async () => {
   const answer = harness.commands.get("answer");
   await assert.rejects(answer.handler("", ctx), /studio failed/);
   assert.deepEqual(harness.blockedEvents, [
-    { active: true, label: "Waiting for Answer Studio response" },
+    { active: true, label: "Waiting for user response" },
     { active: false },
   ]);
 });

@@ -4,7 +4,8 @@ This directory is a locally maintained fork of `@petechu/pi-answer-studio` 0.1.2
 
 Local behavior differences:
 
-- A single extracted question stays in Pi's normal conversation/editor flow; Answer Studio renders only when multiple questions are extracted.
+- A single visible question stays in Pi's normal conversation/editor flow and does not invoke the extraction model; Answer Studio renders only for questionnaire-like prompts.
+- Herdr's blocked notification for a questionnaire is delayed until extraction has produced the questions and the Studio UI is ready.
 - While the custom text editor is active, unmodified left/right arrows move the text cursor.
 - While choices are active instead of the text editor, left/right arrows still change questions.
 - `Tab` and `Shift+Tab` continue to change questions.
