@@ -77,9 +77,9 @@ Reader 直接读取本机 Day One 数据库，不联网、不创建全文索引�
 
 ### Dotfiles 交互式发布
 
-`dotfiles-publish` 是有副作用的交互编排层，与只读诊断扩展 `dotfiles-workflow` 保持独立。命令先展示本地状态，经确认后 fetch，再让操作者选择“发布到远端”“仅应用”或“仅检查”。发布路径依次执行 chezmoi review/apply、仓库测试、完整安全扫描、commit、远端同步和最终 push；提交信息、目标覆盖、fast-forward、rebase 和 push 均有单独确认。
+`dotfiles-publish` 是有副作用的交互编排层，与只读诊断扩展 `dotfiles-workflow` 保持独立。命令先展示本地状态，经确认后 fetch，再让操作者选择“发布到远端”“仅应用”或“仅检查”。发布路径依次执行 chezmoi review/apply、仓库测试、完整安全扫描、commit、远端同步和最终 push；提交信息、目标导入或覆盖、fast-forward、rebase 和 push 均有单独确认。
 
-目标漂移默认停止并保留本机变化，只有明确选择时才逐项用 source 覆盖。远端分叉时先创建 `safety/diverged-*` 分支，再经确认 rebase；冲突、测试失败、安全门禁失败、hook 失败或非 `main` 分支都会停止。扩展固定使用 `git push origin HEAD:main`，不提供 force push 或绕过 hook 的路径。fast-forward 或 rebase 改变 HEAD 后，会重新审阅、应用和验证。
+发现目标漂移时，可以逐项查看 diff 和对应 source 路径并选择导入、跳过或停止，无需手工执行 chezmoi 命令；普通修改通过带 secret 检查的 `chezmoi add` 导入，本机删除需再次确认后通过 `chezmoi forget` 反映到 source，替换模板并移除模板属性也需要额外确认。未处理的漂移会停止发布并保留本机变化，也可以明确选择逐项用 source 覆盖。远端分叉时先创建 `safety/diverged-*` 分支，再经确认 rebase；冲突、测试失败、安全门禁失败、hook 失败或非 `main` 分支都会停止。扩展固定使用 `git push origin HEAD:main`，不提供 force push 或绕过 hook 的路径。fast-forward 或 rebase 改变 HEAD 后，会重新审阅、应用和验证。
 
 ### Skill 系统提示词可见性
 

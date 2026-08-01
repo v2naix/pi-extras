@@ -1,3 +1,4 @@
+import { basename, resolve } from "node:path";
 import type { ExecResult, ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { findDotfilesRoot } from "../dotfiles-workflow/index.ts";
 
@@ -116,16 +117,95 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		return "check";
 	}
 
+	async function importTargetDrift(
+		root: string,
+		destination: string,
+		drift: string[],
+		ctx: ExtensionCommandContext,
+	): Promise<boolean> {
+		let imported = 0;
+		for (const line of drift) {
+			const path = targetPath(line);
+			const absolutePath = resolve(destination, path);
+			const deleted = line[0] === "D";
+			const [diff, sourcePathResult] = await Promise.all([
+				exec(root, "chezmoi", ["diff", "--", absolutePath], 180_000),
+				mustExec(root, "chezmoi", ["source-path", "--", absolutePath], `定位 source ${path}`),
+			]);
+			if (diff.code !== 0) {
+				throw new Error(`无法审核本机变化 ${path}\n${compact(`${diff.stdout}\n${diff.stderr}`)}`);
+			}
+			const sourcePath = sourcePathResult.stdout.trim();
+			const template = basename(sourcePath).endsWith(".tmpl");
+			const action = deleted
+				? "从 source 删除此项（接受本机删除）"
+				: template
+					? "用本机内容替换模板（移除模板属性）"
+					: "导入此项到 source";
+			const choice = await ctx.ui.select(
+				`审核本机变化：${path}\nsource：${sourcePath}\n${template ? "注意：当前 source 是模板，直接导入会将其替换为普通文件。\n" : ""}\n${compact(`${diff.stdout}\n${diff.stderr}`)}`,
+				[action, "跳过此项", "停止审核"],
+			);
+			if (!choice || choice === "停止审核") break;
+			if (choice === "跳过此项") continue;
+			if (deleted) {
+				const confirmed = await ctx.ui.confirm(
+					"确认从 source 删除？",
+					`${path}\n\n这会让该文件不再由 chezmoi 管理，并作为仓库删除进入后续审核。`,
+				);
+				if (!confirmed) continue;
+				await mustExec(root, "chezmoi", ["forget", "--", absolutePath], `导入本机删除 ${path}`);
+			} else {
+				if (template) {
+					const confirmed = await ctx.ui.confirm(
+						"确认移除模板属性？",
+						`${path}\n\nsource 模板将被本机渲染后的内容替换为普通文件。后续 Git 审核仍可取消提交，但扩展不会自动恢复模板。`,
+					);
+					if (!confirmed) continue;
+				}
+				const addArgs = ["add", "--verbose", "--no-tty", "--secrets", "error"];
+				if (template) addArgs.push("--force");
+				addArgs.push("--", absolutePath);
+				await mustExec(root, "chezmoi", addArgs, `导入本机变化 ${path}`, 180_000);
+			}
+			imported++;
+		}
+
+		const remainingStatus = await mustExec(root, "chezmoi", ["status", "--no-pager"], "复查 chezmoi 状态");
+		const remaining = targetDriftLines(remainingStatus.stdout);
+		if (remaining.length > 0) {
+			ctx.ui.notify(
+				`${imported > 0 ? `已导入 ${imported} 项；` : ""}仍有 ${remaining.length} 项本机变化未处理，已停止发布：\n${remaining.map(targetPath).join("\n")}`,
+				"warning",
+			);
+			return false;
+		}
+		ctx.ui.notify(`已逐项审核并导入 ${imported} 项本机变化`, "info");
+		return true;
+	}
+
 	async function resolveTargetDrift(root: string, current: RepoState, ctx: ExtensionCommandContext): Promise<boolean> {
 		const drift = targetDriftLines(current.targetStatus);
 		if (drift.length === 0) return true;
 		const paths = drift.map(targetPath);
+		const destinationResult = await mustExec(
+			root,
+			"chezmoi",
+			["execute-template", "{{ .chezmoi.destDir }}"],
+			"读取 chezmoi 目标目录",
+		);
+		const destination = destinationResult.stdout.trim();
+		if (!destination) throw new Error("chezmoi 目标目录为空");
 		const choice = await ctx.ui.select(`发现 ${paths.length} 个目标漂移，如何处理？`, [
-			"停止：保留本机变化，之后逐项导入或修改模板",
+			"逐项审核并导入本机变化到 source",
 			"用 source 覆盖列出的漂移目标",
+			"停止：保留本机变化",
 			"取消",
 		]);
-		if (!choice || choice !== "用 source 覆盖列出的漂移目标") {
+		if (choice === "逐项审核并导入本机变化到 source") {
+			return importTargetDrift(root, destination, drift, ctx);
+		}
+		if (choice !== "用 source 覆盖列出的漂移目标") {
 			ctx.ui.notify(`未修改目标：\n${paths.join("\n")}`, "warning");
 			return false;
 		}
@@ -135,7 +215,7 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		);
 		if (!confirmed) return false;
 		for (const path of paths) {
-			await mustExec(root, "chezmoi", ["apply", "--verbose", "--parent-dirs", "--", path], `恢复目标 ${path}`);
+			await mustExec(root, "chezmoi", ["apply", "--verbose", "--parent-dirs", "--", resolve(destination, path)], `恢复目标 ${path}`);
 		}
 		ctx.ui.notify("目标漂移已按 source 恢复", "info");
 		return true;
@@ -266,12 +346,11 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 
 				const proceed = await ctx.ui.confirm("已刷新状态", `${stateSummary(current, true)}\n\n执行所选流程？`);
 				if (!proceed) return;
-				if (!(await resolveTargetDrift(root, current, ctx))) return;
-
 				if (goal === "check") {
 					await validate(root, ctx);
 					return;
 				}
+				if (!(await resolveTargetDrift(root, current, ctx))) return;
 				if (!(await reviewAndApply(root, ctx))) return;
 				if (goal === "apply") return;
 
