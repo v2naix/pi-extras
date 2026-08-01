@@ -64,6 +64,7 @@ Reader 直接读取本机 Day One 数据库，不联网、不创建全文索引�
 | [`dashed-editor-border`](extensions/dashed-editor-border/index.ts) | TUI editor | 将输入框上下边框从实线改为虚线，同时保留原有颜色、输入和快捷键行为。 | 仅 TUI；不要与其他替换 editor component 的扩展同时启用。 |
 | [`diff`](extensions/diff/index.ts) | `/diff`、`/diff list`、`/diff clear` | 跟踪上一次 Agent 运行触及的文件，可列出文件或选择后在 Zed 中打开。 | Git；打开文件需要 `zed` CLI。 |
 | [`dotfiles-workflow`](extensions/dotfiles-workflow/index.ts) | `/df-check`、`/df-status`、`/df-review`、`/df-verify`、`/df-doctor`、`/df-help` | Dotfiles Shell 核心的轻量诊断适配层；仅在已识别的 Dotfiles 源内委托公开命令，显示简洁状态，并阻止直接写入该仓库的 `.git` 元数据。 | 对应 Dotfiles 源及其 `scripts/dotfiles`；不会自动 apply、提交、推送、导入漂移或修改 Pi 配置。 |
+| [`dotfiles-publish`](extensions/dotfiles-publish/index.ts) | `/dotfiles-publish` | 在 Pi TUI 中显示 Git、chezmoi 和远端状态，并通过逐步确认完成审阅、apply、测试、安全扫描、提交、同步和最终 push。 | 对应 Dotfiles 源；只允许从 `main` 推送到 `origin/main`，不会 force push；会执行仓库测试和安全门禁。 |
 | [`herdr-answer-studio`](extensions/herdr-answer-studio/index.ts) | `/answer`、自动触发、`herdr:blocked` bridge | 内置本地维护的 Answer Studio fork：多个问题时打开回答界面；只有一个问题时保留普通输入框，同时继续同步 Herdr 侧边栏的等待状态。 | Herdr 及其 Pi integration；不要再单独加载其他 Answer Studio 扩展。 |
 | [`set-pane-title`](extensions/set-pane-title/index.ts) | `/set-pane-title [文字]`、自动命名 | 完成首轮对话后调用当前模型生成一次不超过 20 个字符的默认标题，并将 Herdr pane 左上角的 agent label 设为“当前 agent - 标题”；之后可用命令手动覆盖，切换 session 或退出时清除。 | Herdr 及其 Pi integration；自动命名会额外调用一次当前模型，不带命令参数时需要交互式 UI。 |
 | [`mac-guardrail`](extensions/mac-guardrail/index.ts) | `tool_call` guard | 为 Agent 的 `bash`、`write` 和 `edit` 调用提供轻量 macOS 防护：硬拦截明显的系统破坏操作，对高风险命令和工作目录外写入请求确认。 | macOS；非交互模式对需确认操作默认拒绝。 |
@@ -73,6 +74,12 @@ Reader 直接读取本机 Day One 数据库，不联网、不创建全文索引�
 | [`skill-visibility`](extensions/skill-visibility/index.ts) | `/skill-visibility` | 读取当前环境的全部 Skill，通过可搜索的二级配置界面选择哪些 Skill 不进入系统提示词，同时保留 `/skill:name` 手动调用。 | 配置界面仅支持 TUI；选择全局保存在 Pi agent 目录中。 |
 | [`todo`](extensions/todo/index.ts) | `todo` tool、`/todos` | Pi 官方精简 Todo 示例：用 `add`、`toggle`、`list` 和 `clear` 管理当前会话分支的任务，并提供交互式列表。 | 不注入额外工作流提示；不要与其他注册 `todo` 或 `/todos` 的扩展同时启用。 |
 | [`youtube-transcript`](extensions/youtube-transcript/index.ts) | `youtube_transcript` tool | 下载并清理 YouTube 已有字幕，优先选择人工字幕，并为长文本保存本地缓存。 | `yt-dlp` 和网络连接；只分析字幕，不分析画面或转录音频。 |
+
+### Dotfiles 交互式发布
+
+`dotfiles-publish` 是有副作用的交互编排层，与只读诊断扩展 `dotfiles-workflow` 保持独立。命令先展示本地状态，经确认后 fetch，再让操作者选择“发布到远端”“仅应用”或“仅检查”。发布路径依次执行 chezmoi review/apply、仓库测试、完整安全扫描、commit、远端同步和最终 push；提交信息、目标覆盖、fast-forward、rebase 和 push 均有单独确认。
+
+目标漂移默认停止并保留本机变化，只有明确选择时才逐项用 source 覆盖。远端分叉时先创建 `safety/diverged-*` 分支，再经确认 rebase；冲突、测试失败、安全门禁失败、hook 失败或非 `main` 分支都会停止。扩展固定使用 `git push origin HEAD:main`，不提供 force push 或绕过 hook 的路径。fast-forward 或 rebase 改变 HEAD 后，会重新审阅、应用和验证。
 
 ### Skill 系统提示词可见性
 
