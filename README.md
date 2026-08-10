@@ -31,6 +31,7 @@ pi install git:github.com/v2naix/pi-extras
 | [`dotfiles-workflow`](skills/dotfiles-workflow/SKILL.md) | 指导 Agent 通过 `scripts/dotfiles` 统一接口安全维护 macOS Dotfiles，理解目标漂移、管理清单、独立配置源、秘密、Karabiner/Goku、Yabai 和 GUI 控制面的边界。 | 在对应 Dotfiles 源内处理检查、审阅、编辑、应用、更新、诊断或漂移时按需加载，也可显式调用 `/skill:dotfiles-workflow`。 |
 | [`htmlify`](skills/htmlify/SKILL.md) | 将 Agent 回答、仓库证据、计划、评审和报告制作成自包含的浏览器 HTML，包括 operator brief、实施图、决策简报、事故报告、解释器和轻量交互原型。 | 相关 HTML artifact 请求可按需加载，也可显式调用 `/skill:htmlify`；验证器需要 Node.js 20+，首次通过 `npx` 使用时可能联网下载。 |
 | [`deckify`](skills/deckify/SKILL.md) | 将密集内容制作成自包含 HTML 演示文稿和可打印指南，支持演讲者备注、run-of-show、演示计划、截图和视觉覆盖规划。 | 演示文稿、workshop 或教学指南请求可按需加载，也可显式调用 `/skill:deckify`；验证器需要 Node.js 20+，首次通过 `npx` 使用时可能联网下载。 |
+| [`english-chunk-visualizer`](skills/english-chunk-visualizer/SKILL.md) | 用核心意象、语义关系和真实语境简洁讲解英语表达，并可生成单文件 Three.js 语义可视化页面。 | 仅显式调用 `/skill:english-chunk-visualizer`；Three.js 页面需要支持 WebGL 的现代浏览器，默认 CDN 版本首次打开需要网络。 |
 | [`dayone-new`](skills/dayone-new/SKILL.md) | 通过 Day One 官方 `dayone` CLI 新建本地日记，支持日记本、标签、日期、时区、全天、星标、坐标和附件。正文只通过标准输入传递，并将创建操作视为不可幂等。 | 仅显式调用 `/skill:dayone-new`；需要 macOS、Day One 及官方 CLI。 |
 | [`dayone-reader`](skills/dayone-reader/SKILL.md) | 通过独立的 [`v2naix/dayone-reader`](https://github.com/v2naix/dayone-reader) CLI 检索和读取本地 Day One 数据，支持日记本、标签、最近条目、关键词搜索、历年今日和单篇读取；不会修改或删除日记。 | 仅显式调用 `/skill:dayone-reader`；需要 macOS、Day One、Python 3.11+ 及 reader CLI。 |
 
