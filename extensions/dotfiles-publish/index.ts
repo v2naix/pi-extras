@@ -1,11 +1,20 @@
 import { basename, resolve } from "node:path";
-import type { ExecResult, ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import {
+	BorderedLoader,
+	type ExecResult,
+	type ExtensionAPI,
+	type ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { findDotfilesRoot } from "../dotfiles-workflow/index.ts";
 
 const MAX_DIALOG_CHARS = 7000;
 
 type Goal = "publish" | "apply" | "check";
 type Relation = "equal" | "ahead" | "behind" | "diverged" | "unknown";
+type ProgressOutcome<T> =
+	| { status: "completed"; value: T }
+	| { status: "cancelled" }
+	| { status: "failed"; error: unknown };
 
 interface RepoState {
 	branch: string;
@@ -34,8 +43,14 @@ export function targetPath(line: string): string {
 }
 
 export default function dotfilesPublishExtension(pi: ExtensionAPI) {
-	async function exec(root: string, command: string, args: string[], timeout = 120_000): Promise<ExecResult> {
-		return pi.exec(command, args, { cwd: root, timeout });
+	async function exec(
+		root: string,
+		command: string,
+		args: string[],
+		timeout = 120_000,
+		signal?: AbortSignal,
+	): Promise<ExecResult> {
+		return pi.exec(command, args, { cwd: root, timeout, signal });
 	}
 
 	async function mustExec(
@@ -44,12 +59,41 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		args: string[],
 		label: string,
 		timeout = 120_000,
+		signal?: AbortSignal,
 	): Promise<ExecResult> {
-		const result = await exec(root, command, args, timeout);
+		const result = await exec(root, command, args, timeout, signal);
 		if (result.code !== 0) {
 			throw new Error(`${label}失败（exit ${result.code}）\n${compact(`${result.stdout}\n${result.stderr}`)}`);
 		}
 		return result;
+	}
+
+	async function withProgress<T>(
+		ctx: ExtensionCommandContext,
+		message: string,
+		operation: (signal: AbortSignal) => Promise<T>,
+	): Promise<T | undefined> {
+		const outcome = await ctx.ui.custom<ProgressOutcome<T>>((tui, theme, _keybindings, done) => {
+			const loader = new BorderedLoader(tui, theme, message);
+			let settled = false;
+			const finish = (result: ProgressOutcome<T>) => {
+				if (settled) return;
+				settled = true;
+				done(result);
+			};
+			operation(loader.signal)
+				.then((value) => finish(loader.signal.aborted ? { status: "cancelled" } : { status: "completed", value }))
+				.catch((error: unknown) =>
+					finish(loader.signal.aborted ? { status: "cancelled" } : { status: "failed", error }),
+				);
+			return loader;
+		});
+		if (outcome.status === "failed") throw outcome.error;
+		if (outcome.status === "cancelled") {
+			ctx.ui.notify(`${message} 已取消`, "warning");
+			return undefined;
+		}
+		return outcome.value;
 	}
 
 	async function relation(root: string): Promise<{ relation: Relation; ahead: number; behind: number }> {
@@ -229,7 +273,10 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		const status = await mustExec(root, "chezmoi", ["status", "--no-pager"], "读取 chezmoi 状态");
 		const hasRenderedChanges = Boolean(status.stdout.trim());
 		if (!hasRenderedChanges && !forceReview) return true;
-		const review = await exec(root, "scripts/dotfiles", ["review"], 180_000);
+		const review = await withProgress(ctx, "正在生成并验证 chezmoi 审阅", (signal) =>
+			exec(root, "scripts/dotfiles", ["review"], 180_000, signal),
+		);
+		if (!review) return false;
 		if (review.code !== 0) throw new Error(`review 未通过\n${compact(`${review.stdout}\n${review.stderr}`)}`);
 		const confirmed = await ctx.ui.confirm(
 			hasRenderedChanges ? "应用 chezmoi 变更？" : "远端整合后审阅通过？",
@@ -239,23 +286,34 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		);
 		if (!confirmed) return false;
 		if (!hasRenderedChanges) return true;
-		const applied = await exec(
-			root,
-			"/bin/zsh",
-			["-c", "printf 'APPLY\\n' | scripts/dotfiles apply"],
-			180_000,
+		const applied = await withProgress(ctx, "正在应用 chezmoi 配置", (signal) =>
+			exec(
+				root,
+				"/bin/zsh",
+				["-c", "printf 'APPLY\\n' | scripts/dotfiles apply"],
+				180_000,
+				signal,
+			),
 		);
+		if (!applied) return false;
 		if (applied.code !== 0) throw new Error(`apply 失败\n${compact(`${applied.stdout}\n${applied.stderr}`)}`);
 		ctx.ui.notify("chezmoi 配置已应用", "info");
 		return true;
 	}
 
-	async function validate(root: string, ctx: ExtensionCommandContext): Promise<void> {
+	async function validate(root: string, ctx: ExtensionCommandContext): Promise<boolean> {
 		ctx.ui.setStatus("dotfiles-publish", "dotfiles: tests");
-		await mustExec(root, "tests/run.sh", [], "测试", 10 * 60_000);
+		const tests = await withProgress(ctx, "正在运行仓库测试", (signal) =>
+			mustExec(root, "tests/run.sh", [], "测试", 10 * 60_000, signal),
+		);
+		if (!tests) return false;
 		ctx.ui.setStatus("dotfiles-publish", "dotfiles: security scan");
-		await mustExec(root, "scripts/security-gate", ["--all"], "完整安全扫描", 10 * 60_000);
+		const scan = await withProgress(ctx, "正在执行完整安全扫描", (signal) =>
+			mustExec(root, "scripts/security-gate", ["--all"], "完整安全扫描", 10 * 60_000, signal),
+		);
+		if (!scan) return false;
 		ctx.ui.notify("测试和完整安全扫描通过", "info");
+		return true;
 	}
 
 	async function commitIfNeeded(root: string, ctx: ExtensionCommandContext): Promise<boolean> {
@@ -267,14 +325,23 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		const confirmed = await ctx.ui.confirm("暂存并提交全部受管变更？", `${compact(stat.stdout)}\n\ncommit: ${message.trim()}`);
 		if (!confirmed) return false;
 		await mustExec(root, "git", ["add", "-A"], "暂存变更");
-		await mustExec(root, "scripts/security-gate", ["--staged"], "暂存区安全扫描", 180_000);
-		await mustExec(root, "git", ["commit", "-m", message.trim()], "提交变更", 180_000);
+		const scan = await withProgress(ctx, "正在扫描暂存区", (signal) =>
+			mustExec(root, "scripts/security-gate", ["--staged"], "暂存区安全扫描", 180_000, signal),
+		);
+		if (!scan) return false;
+		const commit = await withProgress(ctx, "正在创建 Git 提交", (signal) =>
+			mustExec(root, "git", ["commit", "-m", message.trim()], "提交变更", 180_000, signal),
+		);
+		if (!commit) return false;
 		ctx.ui.notify("变更已提交", "info");
 		return true;
 	}
 
-	async function fetchRemote(root: string): Promise<void> {
-		await mustExec(root, "git", ["fetch", "--prune", "origin", "main"], "刷新 origin/main", 180_000);
+	async function fetchRemote(root: string, ctx: ExtensionCommandContext): Promise<boolean> {
+		const fetched = await withProgress(ctx, "正在刷新 origin/main", (signal) =>
+			mustExec(root, "git", ["fetch", "--prune", "origin", "main"], "刷新 origin/main", 180_000, signal),
+		);
+		return Boolean(fetched);
 	}
 
 	async function reconcile(root: string, ctx: ExtensionCommandContext): Promise<boolean> {
@@ -284,8 +351,10 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		if (remote.relation === "behind") {
 			const ok = await ctx.ui.confirm("接受远端快进？", `本地落后 origin/main ${remote.behind} 个提交，将执行 ff-only。`);
 			if (!ok) return false;
-			await mustExec(root, "git", ["merge", "--ff-only", "refs/remotes/origin/main"], "快进 main", 180_000);
-			return true;
+			const merged = await withProgress(ctx, "正在快进 main", (signal) =>
+				mustExec(root, "git", ["merge", "--ff-only", "refs/remotes/origin/main"], "快进 main", 180_000, signal),
+			);
+			return Boolean(merged);
 		}
 
 		const ok = await ctx.ui.confirm(
@@ -296,7 +365,10 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 		const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 		const safety = `safety/diverged-${stamp}`;
 		await mustExec(root, "git", ["branch", safety, "HEAD"], "创建分叉安全分支");
-		const rebased = await exec(root, "git", ["rebase", "refs/remotes/origin/main"], 10 * 60_000);
+		const rebased = await withProgress(ctx, "正在 rebase origin/main", (signal) =>
+			exec(root, "git", ["rebase", "refs/remotes/origin/main"], 10 * 60_000, signal),
+		);
+		if (!rebased) return false;
 		if (rebased.code !== 0) {
 			throw new Error(`rebase 冲突或失败，已保留 ${safety}；请解决或 abort 后重新运行命令。\n${compact(`${rebased.stdout}\n${rebased.stderr}`)}`);
 		}
@@ -317,7 +389,10 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 			`将推送 ${final.ahead} 个提交：\n${compact(log.stdout)}\n\n这是流程最后一步。`,
 		);
 		if (!ok) return false;
-		await mustExec(root, "git", ["push", "origin", "HEAD:main"], "推送 origin/main", 10 * 60_000);
+		const pushed = await withProgress(ctx, "正在推送 origin/main", (signal) =>
+			mustExec(root, "git", ["push", "origin", "HEAD:main"], "推送 origin/main", 10 * 60_000, signal),
+		);
+		if (!pushed) return false;
 		ctx.ui.notify("已推送到 origin/main", "info");
 		return true;
 	}
@@ -339,7 +414,7 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 				const refresh = await ctx.ui.confirm("Dotfiles 当前状态", `${stateSummary(current, false)}\n\n刷新 origin/main 后选择操作意图？`);
 				if (!refresh) return;
 				ctx.ui.setStatus("dotfiles-publish", "dotfiles: fetch");
-				await fetchRemote(root);
+				if (!(await fetchRemote(root, ctx))) return;
 				current = await state(root);
 				const goal = await chooseGoal(ctx);
 				if (!goal) return;
@@ -354,10 +429,10 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 				if (!(await reviewAndApply(root, ctx))) return;
 				if (goal === "apply") return;
 
-				await validate(root, ctx);
+				if (!(await validate(root, ctx))) return;
 				if (!(await commitIfNeeded(root, ctx))) return;
 				ctx.ui.setStatus("dotfiles-publish", "dotfiles: reconcile");
-				await fetchRemote(root);
+				if (!(await fetchRemote(root, ctx))) return;
 				const beforeReconcileHead = (await state(root)).head;
 				if (!(await reconcile(root, ctx))) return;
 
@@ -366,7 +441,7 @@ export default function dotfilesPublishExtension(pi: ExtensionAPI) {
 				if (current.head !== beforeReconcileHead) {
 					if (!(await resolveTargetDrift(root, current, ctx))) return;
 					if (!(await reviewAndApply(root, ctx, true))) return;
-					await validate(root, ctx);
+					if (!(await validate(root, ctx))) return;
 				}
 				await push(root, ctx);
 			} catch (error) {
