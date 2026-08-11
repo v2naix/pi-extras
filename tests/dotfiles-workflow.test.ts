@@ -50,16 +50,20 @@ test("combines command output without inventing workflow results", () => {
 	assert.equal(formatWorkflowOutput("", ""), "Command completed without output.");
 });
 
-test("slash commands delegate to scripts/dotfiles with no business logic", async () => {
+test("dw command delegates to scripts/dotfiles with no business logic", async () => {
 	const root = makeDotfilesSource();
 	const commands = new Map<string, any>();
 	const execCalls: unknown[][] = [];
+	const sentMessages: Array<[string, unknown]> = [];
 	const notifications: Array<[string, string]> = [];
 	const pi = {
 		registerCommand(name: string, definition: unknown) {
 			commands.set(name, definition);
 		},
 		on() {},
+		sendUserMessage(message: string, options?: unknown) {
+			sentMessages.push([message, options]);
+		},
 		async exec(command: string, args: string[], options: unknown) {
 			execCalls.push([command, args, options]);
 			return { stdout: "dotfiles check: clean\n", stderr: "", code: 0, killed: false };
@@ -69,7 +73,8 @@ test("slash commands delegate to scripts/dotfiles with no business logic", async
 	try {
 		const canonicalRoot = realpathSync.native(root);
 		dotfilesWorkflow(pi as unknown as ExtensionAPI);
-		await commands.get("df-check").handler("", {
+		assert.deepEqual([...commands.keys()], ["dw"]);
+		await commands.get("dw").handler("check", {
 			cwd: join(root, "nested"),
 			hasUI: true,
 			waitForIdle: async () => {},
@@ -87,6 +92,19 @@ test("slash commands delegate to scripts/dotfiles with no business logic", async
 			{ cwd: canonicalRoot, timeout: 120_000 },
 		]]);
 		assert.deepEqual(notifications, [["dotfiles check: clean", "info"]]);
+
+		await commands.get("dw").handler("applyLocal", { isIdle: () => true });
+		await commands.get("dw").handler("applySource", { isIdle: () => false });
+		assert.deepEqual(sentMessages, [
+			[
+				"处理干净当前的状态，需要 APPLY 自己 APPLY 就行，所有文件改动以本地文件为准。",
+				undefined,
+			],
+			[
+				"处理干净当前的状态，需要 APPLY 自己 APPLY 就行，所有文件改动以仓库 source 为准。",
+				{ deliverAs: "followUp" },
+			],
+		]);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

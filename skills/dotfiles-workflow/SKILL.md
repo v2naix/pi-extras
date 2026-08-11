@@ -26,10 +26,17 @@ Treat `scripts/dotfiles` as the single deep module for the daily workflow. The S
 
 Prefer the Pi read-only commands when the extension is loaded:
 
-- `/df-check` for local checks;
-- `/df-status` only when a network fetch and remote-ref update are intended;
-- `/df-review` for source/rendered diffs, dry-run, and security scanning;
-- `/df-verify` and `/df-doctor` only when the Shell core provides those commands.
+- `/dw check` for local checks;
+- `/dw status` only when a network fetch and remote-ref update are intended;
+- `/dw review` for source/rendered diffs, dry-run, and security scanning;
+- `/dw verify` and `/dw doctor` only when the Shell core provides those commands.
+
+The extension also provides two explicit reconciliation requests that start an Agent turn:
+
+- `/dw applyLocal`: clean the current state with every file change resolved in favor of the local target file, then apply when needed;
+- `/dw applySource`: clean the current state with every file change resolved in favor of the repository source, then apply when needed.
+
+These commands express the user's authority choice and permission to apply. Continue to use the repository's public interface and preserve its review and security gates.
 
 Otherwise call the same public interface directly:
 

@@ -107,46 +107,79 @@ export default function dotfilesWorkflow(pi: ExtensionAPI) {
 	}
 
 	const commands = [
-		["df-check", "check", "运行 Dotfiles 本地只读检查"],
-		["df-status", "status", "检查本地状态并 fetch origin/main 后报告分叉关系"],
-		["df-review", "review", "显示完整 source/rendered diff、dry-run 与安全扫描"],
-		["df-verify", "verify", "委托 Dotfiles 核心运行 verify（若核心已提供）"],
-		["df-doctor", "doctor", "委托 Dotfiles 核心运行 doctor（若核心已提供）"],
+		["check", "运行 Dotfiles 本地只读检查"],
+		["status", "检查本地状态并 fetch origin/main 后报告分叉关系"],
+		["review", "显示完整 source/rendered diff、dry-run 与安全扫描"],
+		["verify", "委托 Dotfiles 核心运行 verify（若核心已提供）"],
+		["doctor", "委托 Dotfiles 核心运行 doctor（若核心已提供）"],
+	] as const;
+	const agentCommands = [
+		[
+			"applyLocal",
+			"处理干净当前的状态，需要 APPLY 自己 APPLY 就行，所有文件改动以本地文件为准。",
+		],
+		[
+			"applySource",
+			"处理干净当前的状态，需要 APPLY 自己 APPLY 就行，所有文件改动以仓库 source 为准。",
+		],
 	] as const;
 
-	for (const [name, coreCommand, description] of commands) {
-		pi.registerCommand(name, {
-			description,
-			handler: async (args, ctx) => {
-				if (args.trim()) {
-					ctx.ui.notify(`/${name} 首版不接受参数。`, "warning");
-					return;
-				}
-				await runCore(coreCommand, ctx);
-			},
-		});
+	function showHelp(ctx: ExtensionCommandContext) {
+		const root = findDotfilesRoot(ctx.cwd);
+		ctx.ui.notify(
+			[
+				root ? `Dotfiles 源：${root}` : "Dotfiles 源：当前目录未识别",
+				"检查 → 编辑源 → 审阅 → 应用 → 功能验证 → 提交 → 推送 → 检查 CI",
+				"",
+				"/dw check   本地只读检查",
+				"/dw status  本地检查 + fetch 远端状态",
+				"/dw review  diff、dry-run 与安全扫描",
+				"/dw verify  委托核心 verify",
+				"/dw doctor       委托核心 doctor",
+				"/dw applyLocal   让 Agent 以本地文件为准处理并按需 apply",
+				"/dw applySource  让 Agent 以仓库 source 为准处理并按需 apply",
+				"",
+				"扩展不会直接 apply、提交、推送、导入漂移或修改 Pi 配置。",
+				"verify/doctor 尚未由当前 scripts/dotfiles 提供时会安全失败；扩展不会自行补做业务逻辑。",
+			].join("\n"),
+			"info",
+		);
 	}
 
-	pi.registerCommand("df-help", {
-		description: "显示 Dotfiles Pi 工作流入口和安全边界",
-		handler: async (_args, ctx) => {
-			const root = findDotfilesRoot(ctx.cwd);
-			ctx.ui.notify(
-				[
-					root ? `Dotfiles 源：${root}` : "Dotfiles 源：当前目录未识别",
-					"检查 → 编辑源 → 审阅 → 应用 → 功能验证 → 提交 → 推送 → 检查 CI",
-					"",
-					"/df-check   本地只读检查",
-					"/df-status  本地检查 + fetch 远端状态",
-					"/df-review  diff、dry-run 与安全扫描",
-					"/df-verify  委托核心 verify",
-					"/df-doctor  委托核心 doctor",
-					"",
-					"扩展不会 apply、提交、推送、导入漂移或修改 Pi 配置。",
-					"verify/doctor 尚未由当前 scripts/dotfiles 提供时会安全失败；扩展不会自行补做业务逻辑。",
-				].join("\n"),
-				"info",
-			);
+	pi.registerCommand("dw", {
+		description: "运行 Dotfiles 工作流子命令，或显示帮助",
+		getArgumentCompletions: (prefix) => {
+			const subcommands = [
+				...commands.map(([command]) => command),
+				...agentCommands.map(([command]) => command),
+				"help",
+			];
+			const matches = subcommands.filter((command) => command.startsWith(prefix));
+			return matches.length > 0
+				? matches.map((command) => ({ value: command, label: command }))
+				: null;
+		},
+		handler: async (args, ctx) => {
+			const command = args.trim();
+			if (!command || command === "help") {
+				showHelp(ctx);
+				return;
+			}
+			const agentCommand = agentCommands.find(([candidate]) => candidate === command);
+			if (agentCommand) {
+				if (ctx.isIdle()) {
+					pi.sendUserMessage(agentCommand[1]);
+				} else {
+					pi.sendUserMessage(agentCommand[1], { deliverAs: "followUp" });
+				}
+				return;
+			}
+			const matched = commands.find(([candidate]) => candidate === command);
+			if (!matched) {
+				ctx.ui.notify(`未知的 /dw 子命令：${command}`, "warning");
+				return;
+			}
+			await runCore(matched[0], ctx);
 		},
 	});
 
