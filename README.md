@@ -69,11 +69,20 @@ Reader 直接读取本机 Day One 数据库，不联网、不创建全文索引�
 | [`set-pane-title`](extensions/set-pane-title/index.ts) | `/set-pane-title [文字]`、自动命名 | 完成首轮对话后调用当前模型生成一次不超过 20 个字符的默认标题，并将 Herdr pane 左上角的 agent label 设为“当前 agent - 标题”；之后可用命令手动覆盖，切换 session 或退出时清除。 | Herdr 及其 Pi integration；自动命名会额外调用一次当前模型，不带命令参数时需要交互式 UI。 |
 | [`mac-guardrail`](extensions/mac-guardrail/index.ts) | `tool_call` guard | 为 Agent 的 `bash`、`write` 和 `edit` 调用提供轻量 macOS 防护：硬拦截明显的系统破坏操作，对高风险命令和工作目录外写入请求确认。 | macOS；非交互模式对需确认操作默认拒绝。 |
 | [`package-catalog`](extensions/package-catalog/index.ts) | `pi_package_catalog` tool | 让 Agent 查看、添加、移除、应用或捕获共享 Pi package catalog 配置，并串行化写操作。 | 独立的 `pi-package-catalog` 仓库。 |
+| [`prompt-template`](extensions/prompt-template/index.ts) | `/pt [add [片段]\|delete [名称]\|名称]` | 全局收录、浏览和删除可复用文本片段；名称从片段首个有效行自动生成，调用时确认后填充 Pi 输入框而不自动发送。 | 管理和详情界面仅支持 TUI；数据保存在 Pi agent 目录。 |
 | [`retro`](extensions/retro/index.ts) | `/retro` | 分析最近会话中的绕路与改进点，并在会话文件旁生成 HTML retrospective。 | 生成报告会调用模型；HTML 从 CDN 加载 Tailwind CSS。 |
 | [`session-digest`](extensions/session-digest/index.ts) | `/digest [all\|ai\|tool\|user\|context]` | 在分页 overlay 中筛选浏览当前 session branch 的消息；通过 `context` 参数显示上下文占用和 token 分布。 | 仅 TUI；每种消息筛选最多展示最近 500 条，并限制单条展示长度。 |
 | [`skill-visibility`](extensions/skill-visibility/index.ts) | `/skill-visibility` | 读取当前环境的全部 Skill，通过可搜索的二级配置界面选择哪些 Skill 不进入系统提示词，同时保留 `/skill:name` 手动调用。 | 配置界面仅支持 TUI；选择全局保存在 Pi agent 目录中。 |
 | [`todo`](extensions/todo/index.ts) | `todo` tool、`/todos` | Pi 官方精简 Todo 示例：用 `add`、`toggle`、`list` 和 `clear` 管理当前会话分支的任务，并提供交互式列表。 | 不注入额外工作流提示；不要与其他注册 `todo` 或 `/todos` 的扩展同时启用。 |
 | [`youtube-transcript`](extensions/youtube-transcript/index.ts) | `youtube_transcript` tool | 下载并清理 YouTube 已有字幕，优先选择人工字幕，并为长文本保存本地缓存。 | `yt-dlp` 和网络连接；只分析字幕，不分析画面或转录音频。 |
+
+### Prompt Template 文本片段
+
+`/pt add 片段内容` 可直接收录文本；未提供内容时会打开多行编辑器。名称不需要单独输入，而是从片段首个非空、非代码围栏的有效行自动生成，并移除常见 Markdown 标题或列表前缀；名称重复时自动追加 `(2)`、`(3)`。完全相同的片段不会重复保存。
+
+直接执行 `/pt` 可搜索已保存片段；也可用 `/pt 名称` 直接定位。调用时先打开支持滚动的详情页，按 `Enter` 确认后只填充 Pi 输入框，不会自动发送。执行 `/pt delete` 会打开片段选择界面，选中后展示详情并二次确认；也可用 `/pt delete 名称` 直接定位。
+
+片段全局保存在 `~/.pi/agent/prompt-template-snippets.json`（实际位置跟随 Pi agent 目录），单条正文最多 100,000 个字符，最多保存 500 条。扩展不联网；管理、预览和调用界面仅支持 TUI 模式。
 
 ### Skill 系统提示词可见性
 
