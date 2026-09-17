@@ -19,6 +19,10 @@ const METADATA_SOURCE = "pi-extras:set-pane-title";
 const STATE_TYPE = "pi-extras:set-pane-title-state";
 const AUTO_TITLE_MAX_LENGTH = 20;
 const MAX_CONVERSATION_LENGTH = 6_000;
+const AGENT_LOGOS: Record<string, string> = {
+  pi: "π",
+  claude: "✱",
+};
 
 type CurrentPaneResponse = {
   result?: {
@@ -208,7 +212,7 @@ export default function setPaneTitleExtension(pi: ExtensionAPI) {
         throw new Error(`Herdr returned unexpected pane ${pane.pane_id}`);
       }
 
-      const label = `${agent} - ${title}`;
+      const label = `${AGENT_LOGOS[agent] ?? agent} - ${title}`;
       await runHerdr([
         "pane",
         "report-metadata",
@@ -242,7 +246,7 @@ export default function setPaneTitleExtension(pi: ExtensionAPI) {
   }
 
   pi.registerCommand("set-pane-title", {
-    description: "Set the Herdr pane label to <agent> - <title>",
+    description: "Set the Herdr pane label to <agent logo> - <title>",
     handler: async (args, ctx) => {
       if (!isInsideHerdr) {
         ctx.ui.notify("This command only works inside a Herdr pane", "error");
