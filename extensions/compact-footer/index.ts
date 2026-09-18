@@ -4,9 +4,8 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 function formatTokens(count: number): string {
   if (count < 1_000) return String(count);
-  if (count < 10_000) return `${(count / 1_000).toFixed(1)}k`;
-  if (count < 1_000_000) return `${Math.round(count / 1_000)}k`;
-  return `${(count / 1_000_000).toFixed(count < 10_000_000 ? 1 : 0)}M`;
+  if (count < 1_000_000) return `${(count / 1_000).toFixed(1)}k`;
+  return `${(count / 1_000_000).toFixed(1)}M`;
 }
 
 function formatCwd(cwd: string): string {
@@ -44,16 +43,17 @@ export default function (pi: ExtensionAPI) {
           location = ` ${location}`;
 
           const usage = ctx.getContextUsage();
-          const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
+          const tokens = usage?.tokens;
           const percent = usage?.percent;
-          const percentText = percent == null ? "?" : `${percent.toFixed(1)}%`;
+          const tokensText = tokens == null ? "?" : formatTokens(tokens);
+          const percentText = percent == null ? "?%" : `${percent.toFixed(1)}%`;
           const contextColor = percent != null && percent > 90
             ? "error"
             : percent != null && percent > 70
               ? "warning"
               : "accent";
-          const context = theme.fg(contextColor, theme.bold(percentText))
-            + theme.fg("dim", `/${formatTokens(contextWindow)} (auto)`);
+          const context = theme.fg(contextColor, theme.bold(`${tokensText} (${percentText})`))
+            + theme.fg("dim", " (auto)");
 
           const modelName = ctx.model?.id ?? "no-model";
           const thinking = ctx.model?.reasoning ? pi.getThinkingLevel() : undefined;
