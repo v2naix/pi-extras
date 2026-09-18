@@ -52,8 +52,8 @@ export default function (pi: ExtensionAPI) {
             : percent != null && percent > 70
               ? "warning"
               : "accent";
-          const context = theme.fg(contextColor, theme.bold(`${tokensText} (${percentText})`))
-            + theme.fg("dim", " (auto)");
+          const context = theme.fg(contextColor, theme.bold(tokensText))
+            + theme.fg("dim", ` (${percentText}) (auto)`);
 
           const modelName = ctx.model?.id ?? "no-model";
           const thinking = ctx.model?.reasoning ? pi.getThinkingLevel() : undefined;
