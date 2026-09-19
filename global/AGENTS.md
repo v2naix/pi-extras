@@ -6,4 +6,4 @@
 
 ## Issue 实现调度
 
-用户通过 `/implement` 明确要求实现 GitHub Issue 时，开始任务发现或执行前，必须读取 `~/.pi/pi-extras/instructions/issue-orchestration.md`，遵循其中的 Subagent 授权、依赖调度与验收规则。仅查看、分析或制定计划的请求不授权启动实现。
+用户通过 `/implement` 明确要求实现 GitHub Issue 时，开始任务发现或执行前，必须读取 `~/.pi/pi-extras/instructions/issue-orchestration.md`：单个 Issue 在当前会话直接实现；多个 Issue 使用 `/skill:implement-issues`，不自行设计编排。仅查看、分析或制定计划的请求不授权启动实现。
