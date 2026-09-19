@@ -22,6 +22,10 @@ pi install git:github.com/v2naix/pi-extras
 
 资源变更后，在 Pi 中执行 `/reload` 或重启。Git 安装可通过 `pi update --extensions` 更新。
 
+## 全局 Agent 指导
+
+个人全局 `AGENTS.md` 和按需加载的 Issue 调度规则也由本仓库管理。通过软链接接入，不修改第三方技能；新机器配置与同步方式见 [全局指导说明](global/README.md)。安装 package 不会自动建立该链接。
+
 ## Skills
 
 | Skill | 功能描述 | 调用方式与环境 |
