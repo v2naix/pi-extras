@@ -39,6 +39,7 @@ pi install git:github.com/v2naix/pi-extras
 | [`english-chunk-visualizer`](skills/english-chunk-visualizer/SKILL.md) | 用核心意象、语义关系和真实语境简洁讲解英语表达，并可生成单文件 Three.js 语义可视化页面。 | 仅显式调用 `/skill:english-chunk-visualizer`；Three.js 页面需要支持 WebGL 的现代浏览器，默认 CDN 版本首次打开需要网络。 |
 | [`dayone-new`](skills/dayone-new/SKILL.md) | 通过 Day One 官方 `dayone` CLI 新建本地日记，支持日记本、标签、日期、时区、全天、星标、坐标和附件。正文只通过标准输入传递，并将创建操作视为不可幂等。 | 仅显式调用 `/skill:dayone-new`；需要 macOS、Day One 及官方 CLI。 |
 | [`dayone-reader`](skills/dayone-reader/SKILL.md) | 通过独立的 [`v2naix/dayone-reader`](https://github.com/v2naix/dayone-reader) CLI 检索和读取本地 Day One 数据，支持日记本、标签、最近条目、关键词搜索、历年今日和单篇读取；不会修改或删除日记。 | 仅显式调用 `/skill:dayone-reader`；需要 macOS、Day One、Python 3.11+ 及 reader CLI。 |
+| [`implement-issues`](skills/implement-issues/SKILL.md) | 用固定的 pi-subagents 工作流批量实现 GitHub Issue：按依赖分波，每波在独立 git worktree 中并行运行全新 worker，宿主执行测试门槛，波间由脚本确定性合并到集成分支，结束后只做一次 `/code-review`；包装 Matt Pocock 的 `/implement` 与 `/code-review`，父会话不再自行设计编排、不读子任务 diff，用户的工作区不受影响。 | 仅显式调用 `/skill:implement-issues`；需要 pi-subagents、已登录的 `gh`、git、bash、python3，以及在 AGENTS.md 中写明测试与类型检查命令的仓库。 |
 
 ### Code Notebook Teacher 与 Teach
 
